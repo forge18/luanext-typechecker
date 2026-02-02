@@ -8,7 +8,7 @@ repository = "https://github.com/forge18/typedlua-typechecker"
 license = "MIT"
 
 [dependencies]
-typedlua-parser = { path = "../typedlua-parser" }
+typedlua-parser = { git = "https://github.com/forge18/typedlua-parser.git" }
 rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
