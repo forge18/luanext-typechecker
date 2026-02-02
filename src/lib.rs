@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod errors;
 pub mod fs;
 mod generics;
+mod helpers;
 pub mod module_resolver;
 mod narrowing;
 mod narrowing_integration;

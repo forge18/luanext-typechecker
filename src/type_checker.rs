@@ -165,27 +165,20 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Load the standard library for the configured Lua version
+    ///
+    /// This method parses the stdlib definition files and processes their
+    /// statements to populate the type checker's symbol table and type environment.
     pub fn load_stdlib(&mut self) -> Result<(), String> {
-        use crate::stdlib;
-        use typedlua_parser::lexer::Lexer;
-        use typedlua_parser::parser::Parser;
+        use crate::state::stdlib_loader;
 
-        let stdlib_files = stdlib::get_all_stdlib(self.options.target);
+        let programs = stdlib_loader::parse_stdlib_files(
+            self.options.target,
+            self.interner,
+            self.common,
+        )?;
 
-        for (filename, source) in stdlib_files {
-            let handler = Arc::new(crate::diagnostics::CollectingDiagnosticHandler::new());
-            let mut lexer = Lexer::new(source, handler.clone(), self.interner);
-            let tokens = lexer
-                .tokenize()
-                .map_err(|e| format!("Failed to lex {}: {:?}", filename, e))?;
-
-            let mut parser = Parser::new(tokens, handler.clone(), self.interner, self.common);
-            let mut program = parser
-                .parse()
-                .map_err(|e| format!("Failed to parse {}: {:?}", filename, e))?;
-
-            // Process declarations from the stdlib to populate the type environment
-            for statement in program.statements.iter_mut() {
+        for mut program in programs {
+            for statement in &mut program.statements {
                 // Ignore errors from stdlib - best-effort population
                 let _ = self.check_statement(statement);
             }
