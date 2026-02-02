@@ -1,9 +1,9 @@
-mod config;
-mod diagnostics;
-mod errors;
-mod fs;
+pub mod config;
+pub mod diagnostics;
+pub mod errors;
+pub mod fs;
 mod generics;
-mod module_resolver;
+pub mod module_resolver;
 mod narrowing;
 mod narrowing_integration;
 mod state;
