@@ -39,15 +39,15 @@ declare namespace string {
 ## Coverage
 
 ### Lua 5.1
-- ✅ Built-in functions
-- ✅ String library
-- ✅ Table library
-- ✅ Math library
-- ✅ I/O library
-- ✅ OS library
-- ✅ Package library
-- ✅ Coroutine library
-- ✅ Debug library
+- Built-in functions
+- String library
+- Table library
+- Math library
+- I/O library
+- OS library
+- Package library
+- Coroutine library
+- Debug library
 
 ### Lua 5.2+
 Includes all 5.1 features plus version-specific additions:

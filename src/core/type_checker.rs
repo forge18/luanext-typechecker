@@ -13,6 +13,7 @@ use crate::visitors::{
 use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
+use tracing::{debug, error, info, instrument, span, Level};
 use typedlua_parser::ast::expression::*;
 use typedlua_parser::ast::pattern::Pattern;
 use typedlua_parser::ast::statement::*;
@@ -187,7 +188,20 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type check a program
+    #[instrument(skip(self, program))]
     pub fn check_program(&mut self, program: &mut Program) -> Result<(), TypeCheckError> {
+        let span = span!(
+            Level::INFO,
+            "check_program",
+            statements = program.statements.len()
+        );
+        let _guard = span.enter();
+
+        debug!(
+            "Starting type checking for program with {} statements",
+            program.statements.len()
+        );
+
         // PASS 1: Register all function declarations (hoisting)
         // This allows functions to be called before they appear in source order
         for statement in program.statements.iter() {
@@ -196,18 +210,30 @@ impl<'a> TypeChecker<'a> {
             }
         }
 
+        debug!("Completed pass 1: function signatures registered");
+
         // PASS 2: Type check all statements (including function bodies)
         let mut first_error: Option<TypeCheckError> = None;
+        let mut statements_checked = 0;
         for statement in program.statements.iter_mut() {
             if let Err(e) = self.check_statement(statement) {
                 if first_error.is_none() {
                     first_error = Some(e);
                 }
             }
+            statements_checked += 1;
         }
+
+        debug!(
+            "Completed pass 2: checked {} statements",
+            statements_checked
+        );
+
         if let Some(err) = first_error {
+            error!(error = %err, "Type checking failed");
             Err(err)
         } else {
+            info!("Type checking completed successfully");
             Ok(())
         }
     }
@@ -227,7 +253,35 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type check a statement
+    #[instrument(skip(self, stmt), fields(stmt_type))]
     fn check_statement(&mut self, stmt: &mut Statement) -> Result<(), TypeCheckError> {
+        let stmt_type = match stmt {
+            Statement::Variable(_) => "Variable",
+            Statement::Function(_) => "Function",
+            Statement::If(_) => "If",
+            Statement::While(_) => "While",
+            Statement::For(_) => "For",
+            Statement::Repeat(_) => "Repeat",
+            Statement::Return(_) => "Return",
+            Statement::Break(_) => "Break",
+            Statement::Continue(_) => "Continue",
+            Statement::Expression(_) => "Expression",
+            Statement::Block(_) => "Block",
+            Statement::Interface(_) => "Interface",
+            Statement::TypeAlias(_) => "TypeAlias",
+            Statement::Enum(_) => "Enum",
+            Statement::Class(_) => "Class",
+            Statement::Import(_) => "Import",
+            Statement::Export(_) => "Export",
+            Statement::Namespace(_) => "Namespace",
+            Statement::Do(_) => "Do",
+            Statement::Label(_) => "Label",
+            Statement::Goto(_) => "Goto",
+            Statement::Try(_) => "Try",
+        };
+
+        span!(Level::DEBUG, "check_statement", kind = stmt_type);
+
         match stmt {
             Statement::Variable(decl) => self.check_variable_declaration(decl),
             Statement::Function(decl) => self.check_function_declaration(decl),
@@ -716,6 +770,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Validate interface members for correctness
+    #[allow(dead_code)]
     fn validate_interface_members(
         &self,
         members: &[ObjectTypeMember],
@@ -982,8 +1037,11 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Resolve a type reference, handling utility types and generic type application
+    #[instrument(skip(self, type_ref), fields(type_name))]
     fn resolve_type_reference(&self, type_ref: &TypeReference) -> Result<Type, TypeCheckError> {
         let name = self.interner.resolve(type_ref.name.node);
+        span!(Level::DEBUG, "resolve_type_reference", type_name = %name);
+
         let span = type_ref.span;
 
         // Check if it's a utility type
@@ -1028,14 +1086,23 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check class declaration
+    #[instrument(skip(self, class_decl), fields(class_name))]
     fn check_class_declaration(
         &mut self,
         class_decl: &mut ClassDeclaration,
     ) -> Result<(), TypeCheckError> {
+        let class_name = self.interner.resolve(class_decl.name.node).to_string();
+        span!(Level::INFO, "check_class_declaration", class_name);
+
+        debug!(
+            members = class_decl.members.len(),
+            "Checking class declaration"
+        );
+
         // Check decorators
         self.check_decorators(&mut class_decl.decorators)?;
 
-        let class_name = self.interner.resolve(class_decl.name.node).to_string();
+        debug!("Checking class {}", class_name);
 
         // Register class symbol (focused function - ~15 lines saved)
         let _class_type = phases::declaration_checking_phase::register_class_symbol(
@@ -1365,12 +1432,13 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Validate that all class properties are compatible with interface index signature
+    #[allow(dead_code)]
     fn validate_index_signature(
         &self,
         class_decl: &ClassDeclaration,
         index_sig: &IndexSignature,
     ) -> Result<(), TypeCheckError> {
-        phases::validation_phase::validate_index_signature(class_decl, index_sig, &self.interner)
+        phases::validation_phase::validate_index_signature(class_decl, index_sig, self.interner)
     }
 
     /// Check that a class implements all abstract methods from its parent class
@@ -1385,7 +1453,7 @@ impl<'a> TypeChecker<'a> {
             parent_name,
             class_members,
             &self.access_control,
-            &self.interner,
+            self.interner,
         )
     }
 
@@ -1995,7 +2063,7 @@ impl<'a> TypeChecker<'a> {
             parent_type_params,
             extends_type_args,
             &self.access_control,
-            &self.interner,
+            self.interner,
             |typ| self.deep_resolve_type(typ),
         )
     }
@@ -2593,6 +2661,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check if a class has circular inheritance by walking up the parent chain
+    #[allow(dead_code)]
     fn has_circular_inheritance(&self, class_name: &str) -> bool {
         phases::validation_phase::has_circular_inheritance(class_name, &self.class_parents)
     }
@@ -2603,6 +2672,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check if a statement always returns
+    #[allow(dead_code)]
     fn statement_always_returns(&self, stmt: &Statement) -> bool {
         control_flow::statement_always_returns(stmt, self.interner)
     }

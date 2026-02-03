@@ -63,7 +63,7 @@ pub fn extract_exports(
         if let Statement::Export(export_decl) = stmt {
             match &export_decl.kind {
                 ExportKind::Declaration(decl) => {
-                    extract_declaration_export(&**decl, symbol_table, interner, &mut exports);
+                    extract_declaration_export(decl, symbol_table, interner, &mut exports);
                 }
                 ExportKind::Named { specifiers, source } => {
                     for spec in specifiers {

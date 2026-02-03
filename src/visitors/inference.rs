@@ -8,6 +8,7 @@ use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
+use tracing::{debug, error, instrument, span, Level};
 use typedlua_parser::ast::expression::*;
 use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern};
 use typedlua_parser::ast::statement::{Block, OperatorKind, Statement};
@@ -146,23 +147,35 @@ impl TypeCheckVisitor for TypeInferrer<'_> {
 }
 
 impl TypeInferenceVisitor for TypeInferrer<'_> {
+    #[instrument(skip(self, expr), fields(expr_kind))]
     fn infer_expression(&mut self, expr: &mut Expression) -> Result<Type, TypeCheckError> {
         let span = expr.span;
+        let expr_kind = format!("{:?}", expr.kind);
+
+        span!(Level::DEBUG, "infer_expression", kind = %expr_kind);
 
         match &mut expr.kind {
-            ExpressionKind::Literal(lit) => Ok(Type::new(TypeKind::Literal(lit.clone()), span)),
+            ExpressionKind::Literal(lit) => {
+                debug!(literal = ?lit, "Inferring literal type");
+                Ok(Type::new(TypeKind::Literal(lit.clone()), span))
+            }
 
             ExpressionKind::Identifier(name) => {
                 let name_str = self.interner.resolve(*name);
+                debug!(name = %name_str, "Inferring identifier type");
+
                 // Check for narrowed type first
                 if let Some(narrowed_type) = self.narrowing_context.get_narrowed_type(*name) {
+                    debug!(name = %name_str, "Found narrowed type");
                     return Ok(narrowed_type.clone());
                 }
 
                 // Fall back to symbol table
                 if let Some(symbol) = self.symbol_table.lookup(&name_str) {
+                    debug!(name = %name_str, type = ?symbol.typ, "Found in symbol table");
                     Ok(symbol.typ.clone())
                 } else {
+                    error!(name = %name_str, "Undefined variable");
                     Err(TypeCheckError::new(
                         format!("Undefined variable '{}'", name_str),
                         span,
@@ -171,12 +184,14 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             }
 
             ExpressionKind::Binary(op, left, right) => {
+                debug!(op = ?op, "Inferring binary operation type");
                 let left_type = self.infer_expression(left)?;
                 let right_type = self.infer_expression(right)?;
                 self.infer_binary_op(*op, &left_type, &right_type, span)
             }
 
             ExpressionKind::Unary(op, operand) => {
+                debug!(op = ?op, "Inferring unary operation type");
                 let operand_type = self.infer_expression(operand)?;
                 self.infer_unary_op(*op, &operand_type, span)
             }
@@ -780,16 +795,20 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
+    #[instrument(skip(self, callee_type, args), fields(args_count = args.len(), return_type))]
     fn infer_call(
         &mut self,
         callee_type: &Type,
         args: &mut [Argument],
         span: Span,
     ) -> Result<Type, TypeCheckError> {
+        debug!(callee_type = ?callee_type.kind, "Inferring function call type");
+
         match &callee_type.kind {
             TypeKind::Function(func_type) => {
                 // Check argument count
                 let actual_args = args.len();
+                debug!(actual_args, "Checking function call argument count");
 
                 // Count required parameters (non-optional, non-rest)
                 let required_params = func_type
@@ -820,6 +839,11 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
 
                 // Check minimum required arguments
                 if actual_args < required_params {
+                    error!(
+                        expected_min = required_params,
+                        actual = actual_args,
+                        "Too few arguments"
+                    );
                     return Err(TypeCheckError::new(
                         format!(
                             "Function expects at least {} arguments but received {}",
@@ -831,6 +855,11 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
 
                 // Check maximum allowed arguments (unless rest parameter)
                 if !has_rest_param && actual_args > max_params {
+                    error!(
+                        expected_max = max_params,
+                        actual = actual_args,
+                        "Too many arguments"
+                    );
                     return Err(TypeCheckError::new(
                         format!(
                             "Function expects at most {} arguments but received {}",
@@ -1142,11 +1171,16 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         Ok(result)
     }
 
+    #[instrument(skip(self, match_expr), fields(arms = match_expr.arms.len()))]
     fn check_match(&mut self, match_expr: &mut MatchExpression) -> Result<Type, TypeCheckError> {
+        debug!(span = ?match_expr.span, "Checking match expression");
+
         // Type check the value being matched
         let value_type = self.infer_expression(&mut match_expr.value)?;
+        debug!(value_type = ?value_type.kind, "Matched value type");
 
         if match_expr.arms.is_empty() {
+            error!("Match expression has no arms");
             return Err(TypeCheckError::new(
                 "Match expression must have at least one arm".to_string(),
                 match_expr.span,
