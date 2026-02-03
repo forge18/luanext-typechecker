@@ -274,10 +274,16 @@ impl<'a> TypeChecker<'a> {
             Statement::Import(_) => "Import",
             Statement::Export(_) => "Export",
             Statement::Namespace(_) => "Namespace",
-            Statement::Do(_) => "Do",
             Statement::Label(_) => "Label",
             Statement::Goto(_) => "Goto",
+            Statement::Throw(_) => "Throw",
             Statement::Try(_) => "Try",
+            Statement::Rethrow(_) => "Rethrow",
+            Statement::DeclareFunction(_) => "DeclareFunction",
+            Statement::DeclareNamespace(_) => "DeclareNamespace",
+            Statement::DeclareType(_) => "DeclareType",
+            Statement::DeclareInterface(_) => "DeclareInterface",
+            Statement::DeclareConst(_) => "DeclareConst",
         };
 
         span!(Level::DEBUG, "check_statement", kind = stmt_type);
