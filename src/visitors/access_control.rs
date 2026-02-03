@@ -1,5 +1,5 @@
-use crate::TypeCheckError;
 use super::TypeCheckVisitor;
+use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use typedlua_parser::ast::statement::{AccessModifier, Parameter};
 use typedlua_parser::ast::types::Type;

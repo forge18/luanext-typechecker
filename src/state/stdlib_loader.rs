@@ -89,7 +89,6 @@ pub fn parse_stdlib_files(
     Ok(programs)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,7 +103,10 @@ mod tests {
 
         assert!(result.is_ok());
         let programs = result.unwrap();
-        assert!(!programs.is_empty(), "Should parse at least one stdlib file");
+        assert!(
+            !programs.is_empty(),
+            "Should parse at least one stdlib file"
+        );
 
         // Verify programs have statements
         let total_statements: usize = programs.iter().map(|p| p.statements.len()).sum();

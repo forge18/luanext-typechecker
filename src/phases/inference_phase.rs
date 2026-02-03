@@ -12,10 +12,12 @@
 
 #![allow(dead_code)]
 
-use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::core::type_environment::TypeEnvironment;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
-use typedlua_parser::ast::statement::{ForStatement, IfStatement, RepeatStatement, ReturnStatement, WhileStatement};
+use typedlua_parser::ast::statement::{
+    ForStatement, IfStatement, RepeatStatement, ReturnStatement, WhileStatement,
+};
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
 
@@ -31,10 +33,7 @@ use typedlua_parser::string_interner::StringInterner;
 /// # Returns
 ///
 /// Returns `Ok(())` if valid (in a catch block), or an error if outside a catch block.
-pub fn check_rethrow_statement(
-    in_catch_block: &[bool],
-    span: Span,
-) -> Result<(), TypeCheckError> {
+pub fn check_rethrow_statement(in_catch_block: &[bool], span: Span) -> Result<(), TypeCheckError> {
     if in_catch_block.last() != Some(&true) {
         return Err(TypeCheckError::new(
             "rethrow can only be used outside of a catch block",
@@ -61,9 +60,7 @@ pub fn check_rethrow_statement(
 /// 2. Check the then block
 /// 3. Check else-if conditions and blocks
 /// 4. Check the else block if present
-pub fn check_if_statement(
-    if_stmt: &IfStatement,
-) -> Result<(), TypeCheckError> {
+pub fn check_if_statement(if_stmt: &IfStatement) -> Result<(), TypeCheckError> {
     // Structural validation only - caller handles expression/block checking
     // If statement structure is already validated by parser
     Ok(())
@@ -78,9 +75,7 @@ pub fn check_if_statement(
 /// # Returns
 ///
 /// Returns `Ok(())`. The caller should check the condition expression and body block.
-pub fn check_while_statement(
-    while_stmt: &WhileStatement,
-) -> Result<(), TypeCheckError> {
+pub fn check_while_statement(while_stmt: &WhileStatement) -> Result<(), TypeCheckError> {
     // Structural validation only - caller handles expression/block checking
     Ok(())
 }
@@ -101,9 +96,7 @@ pub fn check_while_statement(
 /// 3. Declare loop variable(s)
 /// 4. Check the loop body
 /// 5. Exit scope
-pub fn check_for_statement(
-    for_stmt: &ForStatement,
-) -> Result<(), TypeCheckError> {
+pub fn check_for_statement(for_stmt: &ForStatement) -> Result<(), TypeCheckError> {
     // Structural validation - caller handles variable declaration and body checking
     Ok(())
 }
@@ -117,9 +110,7 @@ pub fn check_for_statement(
 /// # Returns
 ///
 /// Returns `Ok(())`. The caller should check the body block and condition expression.
-pub fn check_repeat_statement(
-    repeat_stmt: &RepeatStatement,
-) -> Result<(), TypeCheckError> {
+pub fn check_repeat_statement(repeat_stmt: &RepeatStatement) -> Result<(), TypeCheckError> {
     // Structural validation only
     Ok(())
 }

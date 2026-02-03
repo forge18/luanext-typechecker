@@ -1,11 +1,11 @@
-use crate::types::generics::infer_type_arguments;
-use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use crate::core::type_compat::TypeCompatibility;
-use crate::core::type_environment::TypeEnvironment;
 use super::super::visitors::{AccessControl, AccessControlVisitor, ClassMemberKind};
-use crate::TypeCheckError;
 use super::TypeCheckVisitor;
 use crate::cli::diagnostics::DiagnosticHandler;
+use crate::core::type_compat::TypeCompatibility;
+use crate::core::type_environment::TypeEnvironment;
+use crate::types::generics::infer_type_arguments;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::*;

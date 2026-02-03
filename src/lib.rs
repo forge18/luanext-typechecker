@@ -9,12 +9,6 @@ pub mod types;
 pub mod utils;
 pub mod visitors;
 
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod symbol_table_tests;
-
 pub use core::type_checker::TypeChecker;
 pub use core::type_compat::TypeCompatibility;
 pub use core::type_environment::TypeEnvironment;

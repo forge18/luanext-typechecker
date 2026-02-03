@@ -12,20 +12,20 @@
 #![allow(dead_code)]
 
 use crate::cli::diagnostics::DiagnosticHandler;
-use crate::utils::symbol_table::SymbolTable;
 use crate::core::type_compat::TypeCompatibility;
+use crate::types::generics;
+use crate::utils::symbol_table::SymbolTable;
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberKind};
 use crate::TypeCheckError;
-use crate::types::generics;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use typedlua_parser::ast::expression::Expression;
 use typedlua_parser::ast::statement::{
     ClassMember, Decorator, DecoratorExpression, IndexSignature, MethodDeclaration, TypeParameter,
 };
 use typedlua_parser::ast::types::{ObjectTypeMember, Type};
 use typedlua_parser::prelude::ClassDeclaration;
-use typedlua_parser::ast::expression::Expression;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
 
@@ -141,8 +141,7 @@ pub fn check_abstract_methods_implemented(
                 let method_name = &member.name;
                 let implemented = class_members.iter().any(|m| {
                     if let ClassMember::Method(method) = m {
-                        method.name.node.as_u32()
-                            == interner.get_or_intern(method_name).as_u32()
+                        method.name.node.as_u32() == interner.get_or_intern(method_name).as_u32()
                     } else {
                         false
                     }
@@ -415,19 +414,16 @@ where
                 .zip(parent_params.iter())
                 .enumerate()
             {
-                let child_type = child_param
-                    .type_annotation
-                    .as_ref()
-                    .ok_or_else(|| {
-                        TypeCheckError::new(
-                            format!(
-                                "Override method '{}' parameter {} must have explicit type annotation",
-                                method.name.node,
-                                i + 1
-                            ),
-                            child_param.span,
-                        )
-                    })?;
+                let child_type = child_param.type_annotation.as_ref().ok_or_else(|| {
+                    TypeCheckError::new(
+                        format!(
+                            "Override method '{}' parameter {} must have explicit type annotation",
+                            method.name.node,
+                            i + 1
+                        ),
+                        child_param.span,
+                    )
+                })?;
 
                 let raw_parent_type = parent_param.type_annotation.as_ref().ok_or_else(|| {
                     TypeCheckError::new(
@@ -573,8 +569,8 @@ pub fn check_class_implements_interface(
     type_env: &crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
-    use typedlua_parser::ast::types::{ObjectTypeMember, TypeKind};
     use typedlua_parser::ast::statement::ClassMember;
+    use typedlua_parser::ast::types::{ObjectTypeMember, TypeKind};
 
     if let TypeKind::Object(obj_type) = &interface.kind {
         for required_member in &obj_type.members {
@@ -653,7 +649,8 @@ pub fn check_class_implements_interface(
                                         return Err(TypeCheckError::new(
                                             format!(
                                                 "Method '{}' parameter {} has incompatible type",
-                                                interner.resolve(req_method.name.node), i
+                                                interner.resolve(req_method.name.node),
+                                                i
                                             ),
                                             class_method.span,
                                         ));
@@ -729,9 +726,7 @@ pub fn check_implements_assignable(
 ) -> bool {
     use typedlua_parser::ast::types::TypeKind;
 
-    if let (TypeKind::Reference(s_ref), TypeKind::Reference(t_ref)) =
-        (&source.kind, &target.kind)
-    {
+    if let (TypeKind::Reference(s_ref), TypeKind::Reference(t_ref)) = (&source.kind, &target.kind) {
         let source_name = interner.resolve(s_ref.name.node);
         let target_name = interner.resolve(t_ref.name.node);
 

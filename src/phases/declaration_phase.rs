@@ -77,18 +77,19 @@ pub fn register_function_signature(
     }
 
     // Create function type
-    let func_type = Type::new(
-        TypeKind::Function(FunctionType {
-            type_parameters: decl.type_parameters.clone(),
-            parameters: decl.parameters.clone(),
-            return_type: Box::new(decl.return_type.clone().unwrap_or_else(|| {
-                Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span)
-            })),
-            throws: decl.throws.clone(),
-            span: decl.span,
-        }),
-        decl.span,
-    );
+    let func_type =
+        Type::new(
+            TypeKind::Function(FunctionType {
+                type_parameters: decl.type_parameters.clone(),
+                parameters: decl.parameters.clone(),
+                return_type: Box::new(decl.return_type.clone().unwrap_or_else(|| {
+                    Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span)
+                })),
+                throws: decl.throws.clone(),
+                span: decl.span,
+            }),
+            decl.span,
+        );
 
     // Declare function in symbol table
     let symbol = Symbol::new(
@@ -134,12 +135,7 @@ pub fn declare_pattern(
 ) -> Result<(), TypeCheckError> {
     match pattern {
         Pattern::Identifier(ident) => {
-            let symbol = Symbol::new(
-                interner.resolve(ident.node).to_string(),
-                kind,
-                typ,
-                span,
-            );
+            let symbol = Symbol::new(interner.resolve(ident.node).to_string(), kind, typ, span);
             symbol_table
                 .declare(symbol)
                 .map_err(|e| TypeCheckError::new(e, span))?;

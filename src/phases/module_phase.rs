@@ -10,9 +10,11 @@
 //! orchestrates phase execution.
 
 use crate::cli::diagnostics::DiagnosticHandler;
-use crate::module_resolver::{ExportedSymbol, ModuleExports, ModuleId, ModuleRegistry, ModuleResolver};
-use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::core::type_environment::TypeEnvironment;
+use crate::module_resolver::{
+    ExportedSymbol, ModuleExports, ModuleId, ModuleRegistry, ModuleResolver,
+};
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
 use crate::TypeCheckError;
 use std::path::PathBuf;
@@ -61,12 +63,7 @@ pub fn extract_exports(
         if let Statement::Export(export_decl) = stmt {
             match &export_decl.kind {
                 ExportKind::Declaration(decl) => {
-                    extract_declaration_export(
-                        &**decl,
-                        symbol_table,
-                        interner,
-                        &mut exports,
-                    );
+                    extract_declaration_export(&**decl, symbol_table, interner, &mut exports);
                 }
                 ExportKind::Named { specifiers, source } => {
                     for spec in specifiers {

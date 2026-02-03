@@ -14,9 +14,9 @@ use typedlua_parser::string_interner::{CommonIdentifiers, StringInterner};
 
 use crate::cli::config::CompilerOptions;
 use crate::cli::diagnostics::DiagnosticHandler;
+use crate::core::type_environment::TypeEnvironment;
 use crate::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
 use crate::utils::symbol_table::SymbolTable;
-use crate::core::type_environment::TypeEnvironment;
 use crate::visitors::{AccessControl, TypeNarrower};
 use typedlua_parser::ast::types::Type;
 
