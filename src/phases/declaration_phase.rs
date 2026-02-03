@@ -10,7 +10,7 @@
 //! The phase focuses on DECLARING symbols (adding them to the symbol table) before
 //! full type checking occurs. This enables forward references and proper scope resolution.
 
-use crate::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
 use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern};
 use typedlua_parser::ast::statement::{

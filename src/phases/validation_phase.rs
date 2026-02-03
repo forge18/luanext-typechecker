@@ -11,12 +11,12 @@
 
 #![allow(dead_code)]
 
-use crate::diagnostics::DiagnosticHandler;
-use crate::symbol_table::SymbolTable;
-use crate::type_compat::TypeCompatibility;
+use crate::cli::diagnostics::DiagnosticHandler;
+use crate::utils::symbol_table::SymbolTable;
+use crate::core::type_compat::TypeCompatibility;
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberKind};
 use crate::TypeCheckError;
-use crate::generics;
+use crate::types::generics;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -570,7 +570,7 @@ pub fn has_circular_inheritance(
 pub fn check_class_implements_interface(
     class_decl: &ClassDeclaration,
     interface: &Type,
-    type_env: &crate::type_environment::TypeEnvironment,
+    type_env: &crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
     use typedlua_parser::ast::types::{ObjectTypeMember, TypeKind};
@@ -724,7 +724,7 @@ pub fn check_class_implements_interface(
 pub fn check_implements_assignable(
     source: &Type,
     target: &Type,
-    type_env: &crate::type_environment::TypeEnvironment,
+    type_env: &crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> bool {
     use typedlua_parser::ast::types::TypeKind;

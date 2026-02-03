@@ -1,11 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::super::super::super::symbol_table::SymbolTable;
-    use super::super::super::super::type_environment::TypeEnvironment;
-    use super::super::super::super::visitors::{
-        AccessControl, TypeCheckVisitor, TypeInferenceVisitor, TypeInferrer,
-    };
-    use crate::diagnostics::{CollectingDiagnosticHandler, DiagnosticHandler};
+    use crate::cli::diagnostics::{CollectingDiagnosticHandler, DiagnosticHandler};
+    use crate::core::type_environment::TypeEnvironment;
+    use crate::utils::symbol_table::SymbolTable;
+    use crate::visitors::{AccessControl, TypeCheckVisitor, TypeInferenceVisitor, TypeInferrer};
     use crate::NarrowingContext;
     use std::sync::Arc;
     use typedlua_parser::ast::expression::*;

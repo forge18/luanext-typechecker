@@ -286,7 +286,7 @@ impl TypeEnvironment {
         interner: &typedlua_parser::string_interner::StringInterner,
         common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
     ) -> Result<Type, String> {
-        use super::utility_types::apply_utility_type;
+        use crate::types::utility_types::apply_utility_type;
         apply_utility_type(name, type_args, span, interner, common_ids)
     }
 }

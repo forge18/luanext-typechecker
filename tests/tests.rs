@@ -1,8 +1,8 @@
-use super::*;
-use crate::diagnostics::CollectingDiagnosticHandler;
 use std::sync::Arc;
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
+use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use typedlua_typechecker::{TypeCheckError, TypeChecker};
 
 fn parse_and_check(source: &str) -> Result<(), TypeCheckError> {
     let handler = Arc::new(CollectingDiagnosticHandler::new());

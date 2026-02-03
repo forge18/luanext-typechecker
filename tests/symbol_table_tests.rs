@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::super::symbol_table::{Scope, Symbol, SymbolKind, SymbolTable};
     use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
     use typedlua_parser::span::Span;
+    use typedlua_typechecker::utils::symbol_table::{Scope, Symbol, SymbolKind, SymbolTable};
 
     fn create_test_symbol(name: &str, kind: SymbolKind) -> Symbol {
         Symbol::new(

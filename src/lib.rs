@@ -1,20 +1,13 @@
-pub mod config;
-pub mod diagnostics;
-pub mod errors;
-pub mod fs;
-mod generics;
-mod helpers;
+pub mod cli;
+pub mod core;
+pub mod helpers;
 pub mod module_resolver;
-mod narrowing_integration;
-mod phases;
-mod state;
-mod stdlib;
-mod symbol_table;
-mod type_checker;
-mod type_compat;
-mod type_environment;
-mod utility_types;
-mod visitors;
+pub mod phases;
+pub mod state;
+pub mod stdlib;
+pub mod types;
+pub mod utils;
+pub mod visitors;
 
 #[cfg(test)]
 mod tests;
@@ -22,22 +15,22 @@ mod tests;
 #[cfg(test)]
 mod symbol_table_tests;
 
-pub use generics::{
+pub use core::type_checker::TypeChecker;
+pub use core::type_compat::TypeCompatibility;
+pub use core::type_environment::TypeEnvironment;
+pub use state::TypeCheckerState;
+pub use types::generics::{
     build_substitutions, check_type_constraints, infer_type_arguments,
     instantiate_function_declaration, instantiate_type,
 };
-pub use visitors::{narrow_type_from_condition, NarrowingContext};
-pub use state::TypeCheckerState;
-pub use symbol_table::{
-    Scope, SerializableSymbol, SerializableSymbolTable, Symbol, SymbolKind, SymbolTable,
-};
-pub use type_checker::TypeChecker;
-pub use type_compat::TypeCompatibility;
-pub use type_environment::TypeEnvironment;
-pub use utility_types::{
+pub use types::utility_types::{
     apply_utility_type, evaluate_conditional_type, evaluate_keyof, evaluate_mapped_type,
     evaluate_template_literal_type,
 };
+pub use utils::symbol_table::{
+    Scope, SerializableSymbol, SerializableSymbolTable, Symbol, SymbolKind, SymbolTable,
+};
+pub use visitors::{narrow_type_from_condition, NarrowingContext};
 
 use typedlua_parser::span::Span;
 

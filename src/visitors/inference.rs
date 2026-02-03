@@ -1,11 +1,11 @@
-use super::super::generics::infer_type_arguments;
-use super::super::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use super::super::type_compat::TypeCompatibility;
-use super::super::type_environment::TypeEnvironment;
+use crate::types::generics::infer_type_arguments;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::core::type_compat::TypeCompatibility;
+use crate::core::type_environment::TypeEnvironment;
 use super::super::visitors::{AccessControl, AccessControlVisitor, ClassMemberKind};
-use super::super::TypeCheckError;
+use crate::TypeCheckError;
 use super::TypeCheckVisitor;
-use crate::diagnostics::DiagnosticHandler;
+use crate::cli::diagnostics::DiagnosticHandler;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::*;
@@ -928,7 +928,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 if let Some(type_args) = &type_ref.type_arguments {
                     if let Some(generic_alias) = self.type_env.get_generic_type_alias(&type_name) {
                         // Instantiate the generic type alias with the provided type arguments
-                        use super::super::generics::instantiate_type;
+                        use crate::types::generics::instantiate_type;
                         let instantiated = instantiate_type(
                             &generic_alias.typ,
                             &generic_alias.type_parameters,
@@ -1887,7 +1887,7 @@ impl TypeInferrer<'_> {
         earlier_arm: &MatchArm,
         current_arm: &MatchArm,
     ) {
-        use crate::diagnostics::error_codes::UNREACHABLE_PATTERN;
+        use crate::cli::diagnostics::error_codes::UNREACHABLE_PATTERN;
 
         let message = format!(
             "Pattern is unreachable because it is already covered by arm {} (line {})",
@@ -1896,7 +1896,7 @@ impl TypeInferrer<'_> {
         );
 
         let diagnostic =
-            crate::diagnostics::Diagnostic::warning(current_arm.pattern.span(), message)
+            crate::cli::diagnostics::Diagnostic::warning(current_arm.pattern.span(), message)
                 .with_code(UNREACHABLE_PATTERN);
 
         self.diagnostic_handler.report(diagnostic);

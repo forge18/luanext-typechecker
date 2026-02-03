@@ -1,16 +1,16 @@
-use super::helpers::{control_flow, type_utilities};
-use super::phases;
-use super::phases::declaration_checking_phase;
-use super::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use super::type_compat::TypeCompatibility;
-use super::type_environment::TypeEnvironment;
-use super::visitors::{
+use crate::cli::config::CompilerOptions;
+use crate::cli::diagnostics::DiagnosticHandler;
+use crate::core::type_compat::TypeCompatibility;
+use crate::core::type_environment::TypeEnvironment;
+use crate::helpers::{control_flow, type_utilities};
+use crate::phases;
+use crate::phases::declaration_checking_phase;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::visitors::{
     AccessControl, AccessControlVisitor, ClassContext, ClassMemberInfo, ClassMemberKind,
     NarrowingVisitor, TypeInferenceVisitor, TypeInferrer, TypeNarrower,
 };
-use super::TypeCheckError;
-use crate::config::CompilerOptions;
-use crate::diagnostics::DiagnosticHandler;
+use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::*;
@@ -173,11 +173,8 @@ impl<'a> TypeChecker<'a> {
     pub fn load_stdlib(&mut self) -> Result<(), String> {
         use crate::state::stdlib_loader;
 
-        let programs = stdlib_loader::parse_stdlib_files(
-            self.options.target,
-            self.interner,
-            self.common,
-        )?;
+        let programs =
+            stdlib_loader::parse_stdlib_files(self.options.target, self.interner, self.common)?;
 
         for mut program in programs {
             for statement in &mut program.statements {
@@ -1010,7 +1007,7 @@ impl<'a> TypeChecker<'a> {
 
             // Check for generic type alias
             if let Some(generic_alias) = self.type_env.get_generic_type_alias(&name) {
-                use super::generics::instantiate_type;
+                use crate::types::generics::instantiate_type;
                 return instantiate_type(
                     &generic_alias.typ,
                     &generic_alias.type_parameters,
@@ -1539,9 +1536,9 @@ impl<'a> TypeChecker<'a> {
                     }),
                     ctor.span,
                 );
-                let symbol = crate::symbol_table::Symbol::new(
+                let symbol = crate::utils::symbol_table::Symbol::new(
                     "self".to_string(),
-                    crate::symbol_table::SymbolKind::Parameter,
+                    crate::utils::symbol_table::SymbolKind::Parameter,
                     self_type,
                     ctor.span,
                 );
@@ -1654,9 +1651,9 @@ impl<'a> TypeChecker<'a> {
                         }),
                         method.span,
                     );
-                    let symbol = crate::symbol_table::Symbol::new(
+                    let symbol = crate::utils::symbol_table::Symbol::new(
                         "self".to_string(),
-                        crate::symbol_table::SymbolKind::Parameter,
+                        crate::utils::symbol_table::SymbolKind::Parameter,
                         self_type,
                         method.span,
                     );
@@ -1744,9 +1741,9 @@ impl<'a> TypeChecker<'a> {
                     }),
                     getter.span,
                 );
-                let symbol = crate::symbol_table::Symbol::new(
+                let symbol = crate::utils::symbol_table::Symbol::new(
                     "self".to_string(),
-                    crate::symbol_table::SymbolKind::Parameter,
+                    crate::utils::symbol_table::SymbolKind::Parameter,
                     self_type,
                     getter.span,
                 );
@@ -1794,9 +1791,9 @@ impl<'a> TypeChecker<'a> {
                     }),
                     setter.span,
                 );
-                let symbol = crate::symbol_table::Symbol::new(
+                let symbol = crate::utils::symbol_table::Symbol::new(
                     "self".to_string(),
-                    crate::symbol_table::SymbolKind::Parameter,
+                    crate::utils::symbol_table::SymbolKind::Parameter,
                     self_type,
                     setter.span,
                 );
@@ -1918,9 +1915,9 @@ impl<'a> TypeChecker<'a> {
                 }),
                 op.span,
             );
-            let symbol = crate::symbol_table::Symbol::new(
+            let symbol = crate::utils::symbol_table::Symbol::new(
                 "self".to_string(),
-                crate::symbol_table::SymbolKind::Parameter,
+                crate::utils::symbol_table::SymbolKind::Parameter,
                 self_type,
                 op.span,
             );
@@ -2040,19 +2037,19 @@ impl<'a> TypeChecker<'a> {
             TypeKind::KeyOf(operand) => {
                 // First evaluate the operand recursively
                 let evaluated_operand = self.evaluate_type(operand)?;
-                use super::evaluate_keyof;
+                use crate::types::utility_types::evaluate_keyof;
                 evaluate_keyof(&evaluated_operand, &self.type_env, self.interner)
             }
             TypeKind::Mapped(mapped) => {
-                use super::evaluate_mapped_type;
+                use crate::types::utility_types::evaluate_mapped_type;
                 evaluate_mapped_type(mapped, &self.type_env, self.interner)
             }
             TypeKind::Conditional(conditional) => {
-                use super::evaluate_conditional_type;
+                use crate::types::utility_types::evaluate_conditional_type;
                 evaluate_conditional_type(conditional, &self.type_env)
             }
             TypeKind::TemplateLiteral(template) => {
-                use super::evaluate_template_literal_type;
+                use crate::types::utility_types::evaluate_template_literal_type;
                 evaluate_template_literal_type(template, &self.type_env, self.interner)
             }
             TypeKind::TypeQuery(expr) => {
@@ -2476,7 +2473,6 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
-
     /// Get the list of module dependencies tracked during type checking
     pub fn get_module_dependencies(&self) -> &[std::path::PathBuf] {
         &self.module_dependencies
@@ -2615,7 +2611,7 @@ impl<'a> TypeChecker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::CollectingDiagnosticHandler;
+    use crate::cli::diagnostics::CollectingDiagnosticHandler;
     use typedlua_parser::lexer::Lexer;
     use typedlua_parser::parser::Parser;
 
@@ -2635,7 +2631,7 @@ mod tests {
         let has_errors = handler
             .get_diagnostics()
             .iter()
-            .any(|d| d.level == crate::diagnostics::DiagnosticLevel::Error);
+            .any(|d| d.level == crate::cli::diagnostics::DiagnosticLevel::Error);
 
         if has_errors {
             Err(TypeCheckError::new(
@@ -2665,7 +2661,7 @@ mod tests {
         let has_errors = handler
             .get_diagnostics()
             .iter()
-            .any(|d| d.level == crate::diagnostics::DiagnosticLevel::Error);
+            .any(|d| d.level == crate::cli::diagnostics::DiagnosticLevel::Error);
 
         if has_errors {
             Err(TypeCheckError::new(

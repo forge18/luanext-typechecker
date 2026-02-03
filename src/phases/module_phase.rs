@@ -9,10 +9,10 @@
 //! rather than encapsulating state. This allows flexibility in how the type checker
 //! orchestrates phase execution.
 
-use crate::diagnostics::DiagnosticHandler;
+use crate::cli::diagnostics::DiagnosticHandler;
 use crate::module_resolver::{ExportedSymbol, ModuleExports, ModuleId, ModuleRegistry, ModuleResolver};
-use crate::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use crate::type_environment::TypeEnvironment;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::core::type_environment::TypeEnvironment;
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
 use crate::TypeCheckError;
 use std::path::PathBuf;

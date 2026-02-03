@@ -234,18 +234,18 @@ impl Default for CompilerConfig {
 
 impl CompilerConfig {
     /// Load configuration from a YAML file (tlconfig.yaml)
-    pub fn from_file(path: &Path) -> Result<Self, crate::errors::CompilationError> {
+    pub fn from_file(path: &Path) -> Result<Self, crate::cli::errors::CompilationError> {
         let content = std::fs::read_to_string(path)?;
         let config: CompilerConfig = serde_yaml::from_str(&content)
-            .map_err(|e| crate::errors::CompilationError::ConfigError(e.to_string()))?;
+            .map_err(|e| crate::cli::errors::CompilationError::ConfigError(e.to_string()))?;
         Ok(config)
     }
 
     /// Create a default configuration and write it to tlconfig.yaml
-    pub fn init_file(path: &Path) -> Result<(), crate::errors::CompilationError> {
+    pub fn init_file(path: &Path) -> Result<(), crate::cli::errors::CompilationError> {
         let config = CompilerConfig::default();
         let yaml = serde_yaml::to_string(&config)
-            .map_err(|e| crate::errors::CompilationError::ConfigError(e.to_string()))?;
+            .map_err(|e| crate::cli::errors::CompilationError::ConfigError(e.to_string()))?;
         std::fs::write(path, yaml)?;
         Ok(())
     }

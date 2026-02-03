@@ -12,11 +12,11 @@ use rustc_hash::FxHashMap;
 use typedlua_parser::ast::statement::TypeParameter;
 use typedlua_parser::string_interner::{CommonIdentifiers, StringInterner};
 
-use crate::config::CompilerOptions;
-use crate::diagnostics::DiagnosticHandler;
+use crate::cli::config::CompilerOptions;
+use crate::cli::diagnostics::DiagnosticHandler;
 use crate::module_resolver::{ModuleId, ModuleRegistry, ModuleResolver};
-use crate::symbol_table::SymbolTable;
-use crate::type_environment::TypeEnvironment;
+use crate::utils::symbol_table::SymbolTable;
+use crate::core::type_environment::TypeEnvironment;
 use crate::visitors::{AccessControl, TypeNarrower};
 use typedlua_parser::ast::types::Type;
 
@@ -182,7 +182,7 @@ impl<'a> TypeCheckerState<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::CollectingDiagnosticHandler;
+    use crate::cli::diagnostics::CollectingDiagnosticHandler;
     use std::sync::Arc;
     use typedlua_parser::string_interner::StringInterner;
 

@@ -6,8 +6,8 @@ pub use dependency_graph::DependencyGraph;
 pub use error::{ModuleError, ModuleId, ModuleKind};
 pub use registry::{CompiledModule, ExportedSymbol, ModuleExports, ModuleRegistry, ModuleStatus};
 
-use super::config::CompilerOptions;
-use super::fs::FileSystem;
+use crate::cli::config::CompilerOptions;
+use crate::cli::fs::FileSystem;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -266,7 +266,7 @@ impl ModuleResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fs::MockFileSystem;
+    use crate::cli::fs::MockFileSystem;
 
     fn make_test_fs() -> Arc<MockFileSystem> {
         let mut fs = MockFileSystem::new();

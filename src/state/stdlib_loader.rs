@@ -4,8 +4,8 @@
 //! definition files into AST programs. The caller is responsible for
 //! processing the statements (e.g., type checking, populating symbol tables).
 
-use crate::config::LuaVersion;
-use crate::diagnostics::CollectingDiagnosticHandler;
+use crate::cli::config::LuaVersion;
+use crate::cli::diagnostics::CollectingDiagnosticHandler;
 use std::sync::Arc;
 use typedlua_parser::ast::Program;
 use typedlua_parser::lexer::Lexer;
@@ -93,7 +93,7 @@ pub fn parse_stdlib_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::LuaVersion;
+    use crate::cli::config::LuaVersion;
     use typedlua_parser::string_interner::StringInterner;
 
     #[test]

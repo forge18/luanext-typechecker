@@ -259,7 +259,7 @@ pub fn check_type_constraints(
 /// Check if a type is compatible with a constraint
 /// Uses the TypeCompatibility module for proper checking
 fn is_type_compatible(arg: &Type, constraint: &Type) -> bool {
-    use super::type_compat::TypeCompatibility;
+    use crate::core::type_compat::TypeCompatibility;
     TypeCompatibility::is_assignable(arg, constraint)
 }
 

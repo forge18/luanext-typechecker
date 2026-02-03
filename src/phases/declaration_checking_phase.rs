@@ -12,20 +12,19 @@
 
 #![allow(dead_code)]
 
-use crate::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use crate::type_environment::TypeEnvironment;
+use crate::core::type_environment::TypeEnvironment;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
 use crate::TypeCheckError;
 use typedlua_parser::ast::expression::Literal;
 use typedlua_parser::ast::statement::{
     AccessModifier, ClassDeclaration, ClassMember, EnumDeclaration, InterfaceDeclaration,
-    InterfaceMember, Parameter, TypeAliasDeclaration,
+    InterfaceMember, TypeAliasDeclaration,
 };
 use typedlua_parser::ast::types::{
     ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind, TypeReference,
 };
 use typedlua_parser::prelude::EnumValue;
-use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
 
 /// Check a type alias declaration.
@@ -260,9 +259,7 @@ pub fn check_interface_declaration(
                     .members
                     .iter()
                     .map(|member| match member {
-                        InterfaceMember::Property(prop) => {
-                            ObjectTypeMember::Property(prop.clone())
-                        }
+                        InterfaceMember::Property(prop) => ObjectTypeMember::Property(prop.clone()),
                         InterfaceMember::Method(method) => ObjectTypeMember::Method(method.clone()),
                         InterfaceMember::Index(index) => ObjectTypeMember::Index(index.clone()),
                     })
@@ -511,7 +508,10 @@ pub fn register_class_symbol(
     class_decl: &typedlua_parser::ast::statement::ClassDeclaration,
     symbol_table: &mut SymbolTable,
     type_env: &mut TypeEnvironment,
-    class_type_params: &mut rustc_hash::FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter>>,
+    class_type_params: &mut rustc_hash::FxHashMap<
+        String,
+        Vec<typedlua_parser::ast::statement::TypeParameter>,
+    >,
     interner: &StringInterner,
 ) -> Result<Type, TypeCheckError> {
     let class_name = interner.resolve(class_decl.name.node).to_string();
@@ -613,16 +613,9 @@ pub fn extract_class_member_infos(
                     access: setter.access.unwrap_or(AccessModifier::Public),
                     _is_static: setter.is_static,
                     kind: ClassMemberKind::Setter {
-                        parameter_type: setter
-                            .parameter
-                            .type_annotation
-                            .clone()
-                            .unwrap_or_else(|| {
-                                Type::new(
-                                    TypeKind::Primitive(PrimitiveType::Unknown),
-                                    setter.span,
-                                )
-                            }),
+                        parameter_type: setter.parameter.type_annotation.clone().unwrap_or_else(
+                            || Type::new(TypeKind::Primitive(PrimitiveType::Unknown), setter.span),
+                        ),
                     },
                     is_final: false,
                 });
@@ -698,7 +691,7 @@ pub fn is_critical_member_error(error_message: &str) -> bool {
 /// Returns `Ok(())` if successful, or an error if registration fails.
 pub fn register_class_type_parameters(
     type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
-    type_env: &mut crate::type_environment::TypeEnvironment,
+    type_env: &mut crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), crate::TypeCheckError> {
     if let Some(type_params) = type_params {
@@ -740,7 +733,7 @@ pub fn register_class_type_parameters(
 pub fn register_class_implements(
     class_name: String,
     implements: Vec<Type>,
-    type_env: &mut crate::type_environment::TypeEnvironment,
+    type_env: &mut crate::core::type_environment::TypeEnvironment,
     access_control: &mut crate::visitors::AccessControl,
     interner: &StringInterner,
 ) {
@@ -782,7 +775,7 @@ pub fn register_class_implements(
 /// or registration fails.
 pub fn register_function_type_parameters(
     type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
-    type_env: &mut crate::type_environment::TypeEnvironment,
+    type_env: &mut crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), crate::TypeCheckError> {
     let Some(type_params) = type_params else {
@@ -865,28 +858,19 @@ where
             match member {
                 ObjectTypeMember::Method(method) => {
                     // Substitute return type
-                    method.return_type = substitute_fn(
-                        &method.return_type,
-                        type_args,
-                        interface_name,
-                    );
+                    method.return_type =
+                        substitute_fn(&method.return_type, type_args, interface_name);
                     // Substitute parameter types
                     for param in &mut method.parameters {
                         if let Some(ref type_ann) = param.type_annotation {
-                            param.type_annotation = Some(substitute_fn(
-                                type_ann,
-                                type_args,
-                                interface_name,
-                            ));
+                            param.type_annotation =
+                                Some(substitute_fn(type_ann, type_args, interface_name));
                         }
                     }
                 }
                 ObjectTypeMember::Property(prop) => {
-                    prop.type_annotation = substitute_fn(
-                        &prop.type_annotation,
-                        type_args,
-                        interface_name,
-                    );
+                    prop.type_annotation =
+                        substitute_fn(&prop.type_annotation, type_args, interface_name);
                 }
                 ObjectTypeMember::Index(_) => {}
             }

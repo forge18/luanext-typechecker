@@ -12,8 +12,8 @@
 
 #![allow(dead_code)]
 
-use crate::symbol_table::{Symbol, SymbolKind, SymbolTable};
-use crate::type_environment::TypeEnvironment;
+use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
+use crate::core::type_environment::TypeEnvironment;
 use crate::TypeCheckError;
 use typedlua_parser::ast::statement::{ForStatement, IfStatement, RepeatStatement, ReturnStatement, WhileStatement};
 use typedlua_parser::span::Span;

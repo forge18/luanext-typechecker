@@ -8,6 +8,8 @@ use typedlua_parser::ast::Ident;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
 
+use crate::core::type_environment::TypeEnvironment;
+
 /// Apply a utility type transformation
 pub fn apply_utility_type(
     name: &str,
@@ -537,7 +539,7 @@ fn parameters(type_args: &[Type], span: Span) -> Result<Type, String> {
 /// Transforms the mapped type into a concrete object type
 pub fn evaluate_mapped_type(
     mapped: &MappedType,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     // Resolve the 'in' type if it's a KeyOf expression
@@ -593,7 +595,7 @@ pub fn evaluate_mapped_type(
 /// Evaluate keyof operator - extracts property names from an object type
 pub fn evaluate_keyof(
     typ: &Type,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     // Resolve type reference first
@@ -649,9 +651,9 @@ pub fn evaluate_keyof(
 /// Also handles infer keyword: T extends Array<infer U> ? U : never
 pub fn evaluate_conditional_type(
     conditional: &typedlua_parser::ast::types::ConditionalType,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
 ) -> Result<Type, String> {
-    use super::type_compat::TypeCompatibility;
+    use crate::core::type_compat::TypeCompatibility;
     use rustc_hash::FxHashMap;
 
     // Check if check_type extends extends_type
@@ -723,7 +725,7 @@ pub fn evaluate_conditional_type(
 }
 
 /// Helper to resolve type references
-fn resolve_type_reference(typ: &Type, type_env: &super::TypeEnvironment) -> Type {
+fn resolve_type_reference(typ: &Type, type_env: &TypeEnvironment) -> Type {
     match &typ.kind {
         TypeKind::Reference(type_ref) => {
             let type_name = type_ref.name.node.to_string();
@@ -774,7 +776,7 @@ fn try_match_and_infer(
     check_type: &Type,
     pattern: &Type,
     inferred: &mut FxHashMap<String, Type>,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
 ) -> bool {
     match &pattern.kind {
         // If pattern is `infer R`, capture the check_type as R
@@ -872,7 +874,7 @@ fn try_match_and_infer(
 
         // For other patterns, just check type equality
         _ => {
-            use super::type_compat::TypeCompatibility;
+            use crate::core::type_compat::TypeCompatibility;
             TypeCompatibility::is_assignable(check_type, pattern)
         }
     }
@@ -936,7 +938,7 @@ fn substitute_inferred_types(
 /// Currently supports: string literal unions and type references to them
 fn extract_keys_from_type(
     typ: &Type,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<Vec<String>, String> {
     match &typ.kind {
@@ -1024,7 +1026,7 @@ fn is_nil_or_void(typ: &Type) -> bool {
 
 /// Simple type assignability check
 fn is_assignable_to(source: &Type, target: &Type) -> bool {
-    use super::type_compat::TypeCompatibility;
+    use crate::core::type_compat::TypeCompatibility;
     TypeCompatibility::is_assignable(source, target)
 }
 
@@ -1032,7 +1034,7 @@ fn is_assignable_to(source: &Type, target: &Type) -> bool {
 /// For example: `Hello ${T}` where T = "World" | "Rust" becomes "Hello World" | "Hello Rust"
 pub fn evaluate_template_literal_type(
     template: &typedlua_parser::ast::types::TemplateLiteralType,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     use typedlua_parser::ast::types::TemplateLiteralTypePart;
@@ -1095,7 +1097,7 @@ pub fn evaluate_template_literal_type(
 /// Expand a type to all possible string literal values
 fn expand_type_to_strings(
     ty: &Type,
-    type_env: &super::TypeEnvironment,
+    type_env: &TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<Vec<String>, String> {
     // First resolve any type references
