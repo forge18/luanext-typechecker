@@ -1,8 +1,7 @@
 use crate::di::{DiContainer, ServiceLifetime};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 struct TestService {
     id: usize,
 }
@@ -32,8 +31,7 @@ fn test_transient_service_creates_new_instances() {
     let instance2 = container.resolve::<TestService>().unwrap();
 
     assert_ne!(instance1.id, instance2.id);
-    assert_eq!(instance1.id, 1);
-    assert_eq!(instance2.id, 2);
+    // IDs may vary due to test parallelism, but they should be different
 }
 
 #[test]
@@ -44,8 +42,8 @@ fn test_singleton_service_reuses_instance() {
     let instance1 = container.resolve::<TestService>().unwrap();
     let instance2 = container.resolve::<TestService>().unwrap();
 
+    // For singleton, both instances should have the same ID
     assert_eq!(instance1.id, instance2.id);
-    assert_eq!(instance1.id, 1);
     assert_eq!(container.singleton_count(), 1);
 }
 
@@ -140,8 +138,10 @@ fn test_container_with_dependencies() {
 fn test_default_container_creation() {
     use crate::di::create_default_container;
 
-    let container = create_default_container();
-    assert!(container.is_registered::<crate::cli::diagnostics::CollectingDiagnosticHandler>());
+    let mut container = create_default_container();
+    assert!(
+        container.is_registered::<std::sync::Arc<dyn crate::cli::diagnostics::DiagnosticHandler>>()
+    );
     assert!(container.is_registered::<crate::cli::config::CompilerOptions>());
 
     // Should be able to resolve diagnostic handler

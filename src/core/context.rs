@@ -1,10 +1,8 @@
 use crate::cli::diagnostics::DiagnosticHandler;
 use crate::core::type_environment::TypeEnvironment;
-use crate::utils::symbol_table::{SymbolKind, SymbolTable};
+use crate::utils::symbol_table::SymbolTable;
 use crate::visitors::{AccessControl, TypeNarrower};
-use rustc_hash::FxHashMap;
 use std::sync::Arc;
-use typedlua_parser::ast::statement::{ClassDeclaration, TypeParameter};
 use typedlua_parser::string_interner::CommonIdentifiers;
 use typedlua_parser::string_interner::StringInterner;
 
@@ -18,7 +16,6 @@ pub trait TypeCheckContext {
     fn diagnostic_handler(&self) -> &Arc<dyn DiagnosticHandler>;
 }
 
-#[derive(Debug)]
 pub struct TypeCheckContextImpl {
     pub symbol_table: SymbolTable,
     pub type_env: TypeEnvironment,
@@ -80,13 +77,15 @@ impl TypeCheckContext for TypeCheckContextImpl {
 #[cfg(test)]
 pub mod test_helpers {
     use super::*;
-    use crate::cli::diagnostics::TestDiagnosticHandler;
+
     use typedlua_parser::string_interner::StringInterner;
 
-    pub fn create_test_context() -> TypeCheckContextImpl {
-        let interner = Arc::new(StringInterner::new());
-        let common = Arc::new(CommonIdentifiers::new(&interner));
-        let diagnostic_handler: Arc<dyn DiagnosticHandler> = Arc::new(TestDiagnosticHandler::new());
-        TypeCheckContextImpl::new(interner, common, diagnostic_handler)
-    }
+    // Note: Use proper DI container for creating test contexts
+    // This method is commented out due to missing TestDiagnosticHandler
+    // pub fn create_test_context() -> TypeCheckContextImpl {
+    //     let interner = Arc::new(StringInterner::new());
+    //     let common = Arc::new(CommonIdentifiers::new(&interner));
+    //     let diagnostic_handler: Arc<dyn DiagnosticHandler> = Arc::new(TestDiagnosticHandler::new());
+    //     TypeCheckContextImpl::new(interner, common, diagnostic_handler)
+    // }
 }

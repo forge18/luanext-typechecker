@@ -1,4 +1,4 @@
-use crate::di::{DiContainer, DiError, ServiceLifetime};
+use crate::di::DiError;
 
 #[test]
 fn test_service_not_found_error() {
