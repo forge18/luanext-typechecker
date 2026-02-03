@@ -18,7 +18,8 @@ use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, Clas
 use crate::TypeCheckError;
 use typedlua_parser::ast::expression::Literal;
 use typedlua_parser::ast::statement::{
-    AccessModifier, EnumDeclaration, InterfaceDeclaration, InterfaceMember, TypeAliasDeclaration,
+    AccessModifier, ClassDeclaration, ClassMember, EnumDeclaration, InterfaceDeclaration,
+    InterfaceMember, Parameter, TypeAliasDeclaration,
 };
 use typedlua_parser::ast::types::{
     ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind, TypeReference,
@@ -385,4 +386,511 @@ pub fn check_interface_declaration(
         .any(|m| matches!(m, InterfaceMember::Method(method) if method.body.is_some()));
 
     Ok((has_default_bodies, iface_type))
+}
+
+/// Check a rich enum declaration with fields, constructor, and methods.
+///
+/// Rich enums have additional complexity beyond simple enums - they include fields,
+/// constructors, and methods. This function handles registration of all enum components
+/// with access control and type environment.
+///
+/// Returns the enum's self type which the caller should use for checking constructor
+/// and method bodies in the appropriate scope.
+///
+/// # Parameters
+///
+/// - `enum_decl`: The rich enum declaration to check
+/// - `type_env`: Mutable type environment for type registration
+/// - `access_control`: Access control tracker for member registration
+/// - `interner`: String interner for name resolution
+///
+/// # Returns
+///
+/// Returns `Ok(enum_self_type)` with the enum's type for body checking, or an error if
+/// registration or validation fails. The caller should use this type to check constructor
+/// and method bodies.
+pub fn check_rich_enum_declaration(
+    enum_decl: &EnumDeclaration,
+    type_env: &mut TypeEnvironment,
+    access_control: &mut AccessControl,
+    interner: &StringInterner,
+) -> Result<Type, TypeCheckError> {
+    use rustc_hash::FxHashMap;
+
+    let enum_name = interner.resolve(enum_decl.name.node).to_string();
+
+    // Register rich enum with access control so its members can be tracked
+    access_control.register_class(&enum_name, None);
+
+    // Register enum fields as members for access control
+    for field in &enum_decl.fields {
+        let field_info = ClassMemberInfo {
+            name: interner.resolve(field.name.node).to_string(),
+            access: AccessModifier::Public,
+            _is_static: false,
+            kind: ClassMemberKind::Property {
+                type_annotation: field.type_annotation.clone(),
+            },
+            is_final: false,
+        };
+        access_control.register_member(&enum_name, field_info);
+    }
+
+    let mut member_types = FxHashMap::default();
+    for (i, member) in enum_decl.members.iter().enumerate() {
+        let member_name_str = interner.resolve(member.name.node).to_string();
+        let member_type_name = format!("{}.{}", enum_name, member_name_str);
+        let member_type = Type::new(
+            TypeKind::Literal(Literal::String(member_name_str.clone())),
+            member.span,
+        );
+        type_env
+            .register_type_alias(member_type_name, member_type.clone())
+            .map_err(|e| TypeCheckError::new(e, member.span))?;
+        member_types.insert(i, member_type.clone());
+
+        // Register enum variant as a static public property for member access
+        access_control.register_member(
+            &enum_name,
+            ClassMemberInfo {
+                name: member_name_str,
+                access: AccessModifier::Public,
+                _is_static: true,
+                kind: ClassMemberKind::Property {
+                    type_annotation: member_type,
+                },
+                is_final: true,
+            },
+        );
+    }
+
+    // Register enum methods as members for access control
+    for method in &enum_decl.methods {
+        let method_name = interner.resolve(method.name.node).to_string();
+        access_control.register_member(
+            &enum_name,
+            ClassMemberInfo {
+                name: method_name,
+                access: AccessModifier::Public,
+                _is_static: false,
+                kind: ClassMemberKind::Method {
+                    parameters: method.parameters.clone(),
+                    return_type: method.return_type.clone(),
+                    is_abstract: false,
+                },
+                is_final: false,
+            },
+        );
+    }
+
+    let enum_type = Type::new(
+        TypeKind::Reference(TypeReference {
+            name: enum_decl.name.clone(),
+            type_arguments: None,
+            span: enum_decl.span,
+        }),
+        enum_decl.span,
+    );
+
+    type_env
+        .register_type_alias(enum_name, enum_type.clone())
+        .map_err(|e| TypeCheckError::new(e, enum_decl.span))?;
+
+    Ok(enum_type)
+}
+
+/// Register a class symbol and handle abstract class registration.
+///
+/// This is a focused function that handles the basic class registration in the symbol table
+/// and type environment. It does NOT handle members, inheritance, or other complex logic.
+///
+/// # Returns
+///
+/// Returns the class type for use in further checking.
+pub fn register_class_symbol(
+    class_decl: &typedlua_parser::ast::statement::ClassDeclaration,
+    symbol_table: &mut SymbolTable,
+    type_env: &mut TypeEnvironment,
+    class_type_params: &mut rustc_hash::FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter>>,
+    interner: &StringInterner,
+) -> Result<Type, TypeCheckError> {
+    let class_name = interner.resolve(class_decl.name.node).to_string();
+
+    // Register the class name as a symbol in the symbol table so `new ClassName()` works
+    let class_type = Type::new(
+        TypeKind::Reference(TypeReference {
+            name: class_decl.name.clone(),
+            type_arguments: None,
+            span: class_decl.span,
+        }),
+        class_decl.span,
+    );
+    let class_symbol = Symbol::new(
+        class_name.clone(),
+        SymbolKind::Class,
+        class_type.clone(),
+        class_decl.span,
+    );
+    let _ = symbol_table.declare(class_symbol);
+
+    // Register abstract class
+    if class_decl.is_abstract {
+        type_env.register_abstract_class(class_name.clone());
+    }
+
+    // Store type parameters for this class (needed for generic override checking)
+    if let Some(type_params) = &class_decl.type_parameters {
+        class_type_params.insert(class_name, type_params.clone());
+    }
+
+    Ok(class_type)
+}
+
+/// Extract class member information for access control registration.
+///
+/// This function processes all class members (properties, methods, getters, setters, operators)
+/// from the class declaration to build a list of ClassMemberInfo structures for
+/// access control registration.
+///
+/// # Parameters
+///
+/// - `class_decl`: The class declaration containing members
+/// - `interner`: String interner for resolving identifiers
+///
+/// # Returns
+///
+/// Returns a vector of ClassMemberInfo structures ready for access control registration.
+/// Note: Primary constructor properties must be added separately by the caller since
+/// they require special handling for `is_readonly` field mapping.
+pub fn extract_class_member_infos(
+    class_decl: &ClassDeclaration,
+    interner: &StringInterner,
+) -> Vec<ClassMemberInfo> {
+    use crate::helpers::type_utilities::operator_kind_name;
+    let mut member_infos = Vec::new();
+
+    // Add regular class members
+    for member in &class_decl.members {
+        match member {
+            ClassMember::Property(prop) => {
+                member_infos.push(ClassMemberInfo {
+                    name: interner.resolve(prop.name.node).to_string(),
+                    access: prop.access.unwrap_or(AccessModifier::Public),
+                    _is_static: prop.is_static,
+                    kind: ClassMemberKind::Property {
+                        type_annotation: prop.type_annotation.clone(),
+                    },
+                    is_final: false,
+                });
+            }
+            ClassMember::Method(method) => {
+                member_infos.push(ClassMemberInfo {
+                    name: interner.resolve(method.name.node).to_string(),
+                    access: method.access.unwrap_or(AccessModifier::Public),
+                    _is_static: method.is_static,
+                    kind: ClassMemberKind::Method {
+                        parameters: method.parameters.clone(),
+                        return_type: method.return_type.clone(),
+                        is_abstract: method.is_abstract,
+                    },
+                    is_final: method.is_final,
+                });
+            }
+            ClassMember::Getter(getter) => {
+                member_infos.push(ClassMemberInfo {
+                    name: interner.resolve(getter.name.node).to_string(),
+                    access: getter.access.unwrap_or(AccessModifier::Public),
+                    _is_static: getter.is_static,
+                    kind: ClassMemberKind::Getter {
+                        return_type: getter.return_type.clone(),
+                    },
+                    is_final: false,
+                });
+            }
+            ClassMember::Setter(setter) => {
+                member_infos.push(ClassMemberInfo {
+                    name: interner.resolve(setter.name.node).to_string(),
+                    access: setter.access.unwrap_or(AccessModifier::Public),
+                    _is_static: setter.is_static,
+                    kind: ClassMemberKind::Setter {
+                        parameter_type: setter
+                            .parameter
+                            .type_annotation
+                            .clone()
+                            .unwrap_or_else(|| {
+                                Type::new(
+                                    TypeKind::Primitive(PrimitiveType::Unknown),
+                                    setter.span,
+                                )
+                            }),
+                    },
+                    is_final: false,
+                });
+            }
+            ClassMember::Constructor(_) => {
+                // Constructor doesn't have access modifiers for member access
+            }
+            ClassMember::Operator(op) => {
+                let op_name = operator_kind_name(&op.operator);
+                member_infos.push(ClassMemberInfo {
+                    name: op_name,
+                    access: op.access.unwrap_or(AccessModifier::Public),
+                    _is_static: false,
+                    kind: ClassMemberKind::Operator {
+                        operator: op.operator,
+                        parameters: op.parameters.clone(),
+                        return_type: op.return_type.clone(),
+                    },
+                    is_final: false,
+                });
+            }
+        }
+    }
+
+    member_infos
+}
+
+/// Classify a class member error as critical or non-critical.
+///
+/// Critical errors should fail compilation immediately, while non-critical errors
+/// can be converted to warnings to prevent cascading failures.
+///
+/// # Parameters
+///
+/// - `error_message`: The error message to classify
+///
+/// # Returns
+///
+/// Returns `true` if the error is critical and should fail compilation, `false` otherwise.
+pub fn is_critical_member_error(error_message: &str) -> bool {
+    (error_message.contains("Abstract method") && error_message.contains("abstract class"))
+        || error_message.contains("one constructor")
+        || error_message.contains("Decorators require decorator features")
+        || error_message.contains("Cannot override final method")
+        || error_message.contains("is incompatible with parent")
+        || error_message.contains("must implement abstract method")
+        || error_message.contains("uses override but class")
+        || error_message.contains("marked as override but parent class does not have this method")
+        || error_message.contains("Return type mismatch")
+        || error_message.contains("is private and only accessible")
+        || error_message.contains("is protected and only accessible")
+        || error_message.contains("operators can have 0 parameters")
+        || error_message.contains("Binary operator must have exactly")
+        || error_message.contains("Operator must have 0, 1, or 2")
+        || error_message.contains("must have exactly 2 parameters")
+        || error_message.contains("must return 'boolean'")
+}
+
+/// Register class type parameters in the type environment.
+///
+/// Type parameters from a generic class declaration are registered as type aliases
+/// in the type environment, scoped to the class body. Any existing type aliases
+/// with the same name are removed first.
+///
+/// # Parameters
+///
+/// - `type_params`: Optional slice of type parameters from the class declaration
+/// - `type_env`: Mutable type environment for registration
+/// - `interner`: String interner for resolving parameter names
+///
+/// # Returns
+///
+/// Returns `Ok(())` if successful, or an error if registration fails.
+pub fn register_class_type_parameters(
+    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
+    type_env: &mut crate::type_environment::TypeEnvironment,
+    interner: &StringInterner,
+) -> Result<(), crate::TypeCheckError> {
+    if let Some(type_params) = type_params {
+        for type_param in type_params {
+            let param_name = interner.resolve(type_param.name.node).to_string();
+            let param_type = Type::new(
+                TypeKind::Reference(TypeReference {
+                    name: type_param.name.clone(),
+                    type_arguments: None,
+                    span: type_param.span,
+                }),
+                type_param.span,
+            );
+
+            // Remove any existing type alias with this name (from a previous generic class)
+            // then register fresh. Type params are scoped to the class body.
+            type_env.remove_type_alias(&param_name);
+            type_env
+                .register_type_alias(param_name, param_type)
+                .map_err(|e| crate::TypeCheckError::new(e, type_param.span))?;
+        }
+    }
+    Ok(())
+}
+
+/// Register class-implements relationships in type environment and access control.
+///
+/// This function extracts interface names from the class's implements clause and
+/// registers them with both the type environment (for type checking) and access
+/// control (for member lookup).
+///
+/// # Parameters
+///
+/// - `class_name`: Name of the class
+/// - `implements`: Vector of interface types that the class implements
+/// - `type_env`: Mutable type environment for registration
+/// - `access_control`: Mutable access control for member lookup
+/// - `interner`: String interner for resolving interface names
+pub fn register_class_implements(
+    class_name: String,
+    implements: Vec<Type>,
+    type_env: &mut crate::type_environment::TypeEnvironment,
+    access_control: &mut crate::visitors::AccessControl,
+    interner: &StringInterner,
+) {
+    if implements.is_empty() {
+        return;
+    }
+
+    // Register with type environment for type checking
+    type_env.register_class_implements(class_name.clone(), implements.clone());
+
+    // Extract interface names and register with access control for member lookup
+    let interface_names: Vec<String> = implements
+        .iter()
+        .map(|t| {
+            // Extract the interface name from the type
+            match &t.kind {
+                TypeKind::Reference(ref_type) => interner.resolve(ref_type.name.node).to_string(),
+                _ => format!("{:?}", t),
+            }
+        })
+        .collect();
+    access_control.register_class_implements(&class_name, interface_names);
+}
+
+/// Register function type parameters with duplicate checking.
+///
+/// This function validates that type parameters are unique and registers them
+/// in the type environment along with any constraints.
+///
+/// # Parameters
+///
+/// - `type_params`: Optional slice of type parameters from the function declaration
+/// - `type_env`: Mutable type environment for registration
+/// - `interner`: String interner for resolving parameter names
+///
+/// # Returns
+///
+/// Returns `Ok(())` if successful, or an error if duplicate parameters are found
+/// or registration fails.
+pub fn register_function_type_parameters(
+    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
+    type_env: &mut crate::type_environment::TypeEnvironment,
+    interner: &StringInterner,
+) -> Result<(), crate::TypeCheckError> {
+    let Some(type_params) = type_params else {
+        return Ok(());
+    };
+
+    // Check for duplicate type parameters
+    let mut seen_params = std::collections::HashSet::new();
+    for type_param in type_params {
+        let param_name = interner.resolve(type_param.name.node).to_string();
+        if !seen_params.insert(param_name.clone()) {
+            return Err(crate::TypeCheckError::new(
+                format!("Duplicate type parameter '{}'", param_name),
+                type_param.span,
+            ));
+        }
+    }
+
+    // Register type parameters in type environment
+    for type_param in type_params {
+        let param_name = interner.resolve(type_param.name.node).to_string();
+        let param_type = Type::new(
+            TypeKind::Reference(TypeReference {
+                name: type_param.name.clone(),
+                type_arguments: None,
+                span: type_param.span,
+            }),
+            type_param.span,
+        );
+
+        // Type parameters are treated as local types in the function scope
+        type_env.remove_type_alias(&param_name);
+        type_env
+            .register_type_alias(param_name.clone(), param_type)
+            .map_err(|e| crate::TypeCheckError::new(e, type_param.span))?;
+
+        // Register constraint if present (e.g., T implements Identifiable)
+        if let Some(constraint) = &type_param.constraint {
+            type_env.register_type_param_constraint(param_name, (**constraint).clone());
+        }
+    }
+
+    Ok(())
+}
+
+/// Instantiate a generic interface with type arguments.
+///
+/// For generic interfaces like `Comparable<T>`, this function takes the interface type
+/// and substitutes all type parameters with concrete type arguments, producing an
+/// instantiated interface like `Comparable<number>`.
+///
+/// This handles the complex nested type substitution required for generic interface
+/// implementation checking.
+///
+/// # Parameters
+///
+/// - `interface`: The generic interface type to instantiate
+/// - `type_args`: The type arguments to substitute
+/// - `interface_name`: Name of the interface for substitution context
+/// - `substitute_fn`: Callback to perform type argument substitution
+///
+/// # Returns
+///
+/// Returns the instantiated interface type with all type parameters replaced.
+pub fn instantiate_generic_interface<F>(
+    interface: Type,
+    type_args: &Vec<Type>,
+    interface_name: &str,
+    substitute_fn: F,
+) -> Type
+where
+    F: Fn(&Type, &Vec<Type>, &str) -> Type,
+{
+    let mut instantiated_iface = interface.clone();
+    if let TypeKind::Object(ref mut obj) = instantiated_iface.kind {
+        // Build substitution map from interface type params
+        // For generic interfaces, we stored the raw type with references to T
+        // We need to substitute T -> type_arg for each type param
+        for member in &mut obj.members {
+            match member {
+                ObjectTypeMember::Method(method) => {
+                    // Substitute return type
+                    method.return_type = substitute_fn(
+                        &method.return_type,
+                        type_args,
+                        interface_name,
+                    );
+                    // Substitute parameter types
+                    for param in &mut method.parameters {
+                        if let Some(ref type_ann) = param.type_annotation {
+                            param.type_annotation = Some(substitute_fn(
+                                type_ann,
+                                type_args,
+                                interface_name,
+                            ));
+                        }
+                    }
+                }
+                ObjectTypeMember::Property(prop) => {
+                    prop.type_annotation = substitute_fn(
+                        &prop.type_annotation,
+                        type_args,
+                        interface_name,
+                    );
+                }
+                ObjectTypeMember::Index(_) => {}
+            }
+        }
+    }
+    instantiated_iface
 }

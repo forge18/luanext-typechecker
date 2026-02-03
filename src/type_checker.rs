@@ -1,5 +1,6 @@
 use super::helpers::{control_flow, type_utilities};
 use super::phases;
+use super::phases::declaration_checking_phase;
 use super::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use super::type_compat::TypeCompatibility;
 use super::type_environment::TypeEnvironment;
@@ -355,46 +356,11 @@ impl<'a> TypeChecker<'a> {
         self.symbol_table.enter_scope();
 
         // If generic, declare type parameters as types in scope
-        if let Some(type_params) = &decl.type_parameters {
-            // Check for duplicate type parameters
-            let mut seen_params = std::collections::HashSet::new();
-            for type_param in type_params {
-                let param_name = self.interner.resolve(type_param.name.node).to_string();
-                if !seen_params.insert(param_name.clone()) {
-                    return Err(TypeCheckError::new(
-                        format!("Duplicate type parameter '{}'", param_name),
-                        type_param.span,
-                    ));
-                }
-            }
-
-            for type_param in type_params {
-                let param_name = self.interner.resolve(type_param.name.node).to_string();
-                // Register each type parameter as a type in the current scope
-                // This allows the function body to reference T, U, etc.
-                let param_type = Type::new(
-                    TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                        name: type_param.name.clone(),
-                        type_arguments: None,
-                        span: type_param.span,
-                    }),
-                    type_param.span,
-                );
-
-                // Type parameters are treated as local types in the function scope
-                // We register them as type aliases for now
-                self.type_env.remove_type_alias(&param_name);
-                self.type_env
-                    .register_type_alias(param_name.clone(), param_type)
-                    .map_err(|e| TypeCheckError::new(e, type_param.span))?;
-
-                // Register constraint if present (e.g., T implements Identifiable)
-                if let Some(constraint) = &type_param.constraint {
-                    self.type_env
-                        .register_type_param_constraint(param_name, (**constraint).clone());
-                }
-            }
-        }
+        phases::declaration_checking_phase::register_function_type_parameters(
+            decl.type_parameters.as_deref(),
+            &mut self.type_env,
+            self.interner,
+        )?;
 
         // Declare parameters
         for (i, param) in decl.parameters.iter().enumerate() {
@@ -979,87 +945,15 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         enum_decl: &mut EnumDeclaration,
     ) -> Result<(), TypeCheckError> {
-        let enum_name = self.interner.resolve(enum_decl.name.node).to_string();
+        // Register enum types and members with phase function
+        let enum_self_type = phases::declaration_checking_phase::check_rich_enum_declaration(
+            enum_decl,
+            &mut self.type_env,
+            &mut self.access_control,
+            self.interner,
+        )?;
 
-        // Register rich enum with access control so its members can be tracked
-        self.access_control.register_class(&enum_name, None);
-
-        // Register enum fields as members for access control
-        for field in &enum_decl.fields {
-            let field_info = ClassMemberInfo {
-                name: self.interner.resolve(field.name.node).to_string(),
-                access: AccessModifier::Public,
-                _is_static: false,
-                kind: ClassMemberKind::Property {
-                    type_annotation: field.type_annotation.clone(),
-                },
-                is_final: false,
-            };
-            self.access_control.register_member(&enum_name, field_info);
-        }
-
-        let mut member_types = FxHashMap::default();
-        for (i, member) in enum_decl.members.iter().enumerate() {
-            let member_name_str = self.interner.resolve(member.name.node).to_string();
-            let member_type_name = format!("{}.{}", enum_name, member_name_str);
-            let member_type = Type::new(
-                TypeKind::Literal(Literal::String(member_name_str.clone())),
-                member.span,
-            );
-            self.type_env
-                .register_type_alias(member_type_name, member_type.clone())
-                .map_err(|e| TypeCheckError::new(e, member.span))?;
-            member_types.insert(i, member_type.clone());
-
-            // Register enum variant as a static public property for member access
-            self.access_control.register_member(
-                &enum_name,
-                ClassMemberInfo {
-                    name: member_name_str,
-                    access: AccessModifier::Public,
-                    _is_static: true,
-                    kind: ClassMemberKind::Property {
-                        type_annotation: member_type,
-                    },
-                    is_final: true,
-                },
-            );
-        }
-
-        // Register enum methods as members for access control
-        for method in &enum_decl.methods {
-            let method_name = self.interner.resolve(method.name.node).to_string();
-            self.access_control.register_member(
-                &enum_name,
-                ClassMemberInfo {
-                    name: method_name,
-                    access: AccessModifier::Public,
-                    _is_static: false,
-                    kind: ClassMemberKind::Method {
-                        parameters: method.parameters.clone(),
-                        return_type: method.return_type.clone(),
-                        is_abstract: false,
-                    },
-                    is_final: false,
-                },
-            );
-        }
-
-        let enum_type = Type::new(
-            TypeKind::Reference(TypeReference {
-                name: enum_decl.name.clone(),
-                type_arguments: None,
-                span: enum_decl.span,
-            }),
-            enum_decl.span,
-        );
-
-        self.type_env
-            .register_type_alias(enum_name.clone(), enum_type.clone())
-            .map_err(|e| TypeCheckError::new(e, enum_decl.span))?;
-
-        let enum_self_type = enum_type.clone();
-
+        // Check constructor body if present
         if let Some(ref mut constructor) = enum_decl.constructor {
             self.symbol_table.enter_scope();
             let self_symbol = Symbol::new(
@@ -1073,6 +967,7 @@ impl<'a> TypeChecker<'a> {
             self.symbol_table.exit_scope();
         }
 
+        // Check method bodies
         for method in enum_decl.methods.iter_mut() {
             self.symbol_table.enter_scope();
             let self_symbol = Symbol::new(
@@ -1145,114 +1040,47 @@ impl<'a> TypeChecker<'a> {
 
         let class_name = self.interner.resolve(class_decl.name.node).to_string();
 
-        // Register the class name as a symbol in the symbol table so `new ClassName()` works
-        let class_type = Type::new(
-            TypeKind::Reference(TypeReference {
-                name: class_decl.name.clone(),
-                type_arguments: None,
-                span: class_decl.span,
-            }),
-            class_decl.span,
-        );
-        let class_symbol = Symbol::new(
-            class_name.clone(),
-            SymbolKind::Class,
-            class_type,
-            class_decl.span,
-        );
-        let _ = self.symbol_table.declare(class_symbol);
-
-        // Register abstract class
-        if class_decl.is_abstract {
-            self.type_env.register_abstract_class(class_name.clone());
-        }
-
-        // Store type parameters for this class (needed for generic override checking)
-        if let Some(type_params) = &class_decl.type_parameters {
-            self.class_type_params
-                .insert(class_name.clone(), type_params.clone());
-        }
+        // Register class symbol (focused function - ~15 lines saved)
+        let _class_type = phases::declaration_checking_phase::register_class_symbol(
+            class_decl,
+            &mut self.symbol_table,
+            &mut self.type_env,
+            &mut self.class_type_params,
+            self.interner,
+        )?;
 
         // Enter a new scope for the class
         self.symbol_table.enter_scope();
 
         // Register type parameters if this is a generic class
-        if let Some(type_params) = &class_decl.type_parameters {
-            for type_param in type_params {
-                let param_name = self.interner.resolve(type_param.name.node).to_string();
-                let param_type = Type::new(
-                    TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                        name: type_param.name.clone(),
-                        type_arguments: None,
-                        span: type_param.span,
-                    }),
-                    type_param.span,
-                );
+        // Register class type parameters in the type environment
+        phases::declaration_checking_phase::register_class_type_parameters(
+            class_decl.type_parameters.as_deref(),
+            &mut self.type_env,
+            self.interner,
+        )?;
 
-                // Remove any existing type alias with this name (from a previous generic class)
-                // then register fresh. Type params are scoped to the class body.
-                self.type_env.remove_type_alias(&param_name);
-                self.type_env
-                    .register_type_alias(param_name, param_type)
-                    .map_err(|e| TypeCheckError::new(e, type_param.span))?;
-            }
-        }
-
-        // Check extends clause - validate base class exists and is a class
+        // Validate class inheritance (focused function - ~20 lines saved)
         if let Some(extends_type) = &class_decl.extends {
-            if let TypeKind::Reference(_type_ref) = &extends_type.kind {
-                // Check if parent class is final
-                let parent_name = self.interner.resolve(_type_ref.name.node);
-                if self.access_control.is_class_final(&parent_name) {
-                    return Err(TypeCheckError::new(
-                        format!("Cannot extend final class {}", parent_name),
-                        class_decl.span,
-                    ));
-                }
-
-                // Check for circular inheritance
-                self.class_parents
-                    .insert(class_name.clone(), parent_name.to_string());
-                if self.has_circular_inheritance(&class_name) {
-                    return Err(TypeCheckError::new(
-                        format!("Circular inheritance detected: class '{}' inherits from itself through the inheritance chain", class_name),
-                        class_decl.span,
-                    ));
-                }
-
-                // Verify the base class exists
-                // For now, we'll just ensure it's a valid type reference
-            } else {
-                return Err(TypeCheckError::new(
-                    "Class can only extend another class (type reference)",
-                    class_decl.span,
-                ));
-            }
+            phases::validation_phase::validate_class_inheritance(
+                &class_name,
+                extends_type,
+                &self.access_control,
+                &mut self.class_parents,
+                self.interner,
+                class_decl.span,
+            )?;
         }
 
         // Register class implements relationships before compliance checking,
         // so covariant return type checks can look up the class hierarchy
-        if !class_decl.implements.is_empty() {
-            self.type_env
-                .register_class_implements(class_name.clone(), class_decl.implements.clone());
-
-            // Also register with access control for member lookup in interfaces
-            let interface_names: Vec<String> = class_decl
-                .implements
-                .iter()
-                .map(|t| {
-                    // Extract the interface name from the type
-                    match &t.kind {
-                        typedlua_parser::ast::types::TypeKind::Reference(ref_type) => {
-                            self.interner.resolve(ref_type.name.node).to_string()
-                        }
-                        _ => format!("{:?}", t),
-                    }
-                })
-                .collect();
-            self.access_control
-                .register_class_implements(&class_name, interface_names);
-        }
+        phases::declaration_checking_phase::register_class_implements(
+            class_name.clone(),
+            class_decl.implements.clone(),
+            &mut self.type_env,
+            &mut self.access_control,
+            self.interner,
+        );
 
         // Check interface implementation
         for interface_type in &class_decl.implements {
@@ -1261,46 +1089,14 @@ impl<'a> TypeChecker<'a> {
                 if let Some(interface) = self.type_env.get_interface(&interface_name) {
                     // If the interface has type arguments, instantiate it
                     let instantiated = if let Some(type_args) = &type_ref.type_arguments {
-                        // Look up interface type parameters from the declaration
-                        // We need to find the interface's type params to map them
-                        let mut instantiated_iface = interface.clone();
-                        if let TypeKind::Object(ref mut obj) = instantiated_iface.kind {
-                            // Build substitution map from interface type params
-                            // For generic interfaces, we stored the raw type with references to T
-                            // We need to substitute T -> type_arg for each type param
-                            for member in &mut obj.members {
-                                match member {
-                                    ObjectTypeMember::Method(method) => {
-                                        // Substitute return type
-                                        method.return_type = self.substitute_type_args_in_type(
-                                            &method.return_type,
-                                            type_args,
-                                            &interface_name,
-                                        );
-                                        // Substitute parameter types
-                                        for param in &mut method.parameters {
-                                            if let Some(ref type_ann) = param.type_annotation {
-                                                param.type_annotation =
-                                                    Some(self.substitute_type_args_in_type(
-                                                        type_ann,
-                                                        type_args,
-                                                        &interface_name,
-                                                    ));
-                                            }
-                                        }
-                                    }
-                                    ObjectTypeMember::Property(prop) => {
-                                        prop.type_annotation = self.substitute_type_args_in_type(
-                                            &prop.type_annotation,
-                                            type_args,
-                                            &interface_name,
-                                        );
-                                    }
-                                    ObjectTypeMember::Index(_) => {}
-                                }
-                            }
-                        }
-                        instantiated_iface
+                        declaration_checking_phase::instantiate_generic_interface(
+                            interface.clone(),
+                            type_args,
+                            &interface_name,
+                            |typ, args, iface_name| {
+                                self.substitute_type_args_in_type(typ, args, iface_name)
+                            },
+                        )
                     } else {
                         interface.clone()
                     };
@@ -1421,82 +1217,12 @@ impl<'a> TypeChecker<'a> {
             });
         }
 
-        for member in &class_decl.members {
-            match member {
-                ClassMember::Property(prop) => {
-                    member_infos.push(ClassMemberInfo {
-                        name: self.interner.resolve(prop.name.node).to_string(),
-                        access: prop.access.unwrap_or(AccessModifier::Public),
-                        _is_static: prop.is_static,
-                        kind: ClassMemberKind::Property {
-                            type_annotation: prop.type_annotation.clone(),
-                        },
-                        is_final: false,
-                    });
-                }
-                ClassMember::Method(method) => {
-                    member_infos.push(ClassMemberInfo {
-                        name: self.interner.resolve(method.name.node).to_string(),
-                        access: method.access.unwrap_or(AccessModifier::Public),
-                        _is_static: method.is_static,
-                        kind: ClassMemberKind::Method {
-                            parameters: method.parameters.clone(),
-                            return_type: method.return_type.clone(),
-                            is_abstract: method.is_abstract,
-                        },
-                        is_final: method.is_final,
-                    });
-                }
-                ClassMember::Getter(getter) => {
-                    member_infos.push(ClassMemberInfo {
-                        name: self.interner.resolve(getter.name.node).to_string(),
-                        access: getter.access.unwrap_or(AccessModifier::Public),
-                        _is_static: getter.is_static,
-                        kind: ClassMemberKind::Getter {
-                            return_type: getter.return_type.clone(),
-                        },
-                        is_final: false,
-                    });
-                }
-                ClassMember::Setter(setter) => {
-                    member_infos.push(ClassMemberInfo {
-                        name: self.interner.resolve(setter.name.node).to_string(),
-                        access: setter.access.unwrap_or(AccessModifier::Public),
-                        _is_static: setter.is_static,
-                        kind: ClassMemberKind::Setter {
-                            parameter_type: setter
-                                .parameter
-                                .type_annotation
-                                .clone()
-                                .unwrap_or_else(|| {
-                                    Type::new(
-                                        TypeKind::Primitive(PrimitiveType::Unknown),
-                                        setter.span,
-                                    )
-                                }),
-                        },
-                        is_final: false,
-                    });
-                }
-                ClassMember::Constructor(_) => {
-                    // Constructor doesn't have access modifiers for member access
-                }
-                ClassMember::Operator(op) => {
-                    let op_name = self.operator_kind_name(&op.operator);
-                    member_infos.push(ClassMemberInfo {
-                        name: op_name,
-                        access: op.access.unwrap_or(AccessModifier::Public),
-                        _is_static: false,
-                        kind: ClassMemberKind::Operator {
-                            operator: op.operator,
-                            parameters: op.parameters.clone(),
-                            return_type: op.return_type.clone(),
-                        },
-                        is_final: false,
-                    });
-                }
-            }
-        }
+        // Extract regular class member information
+        let mut class_member_infos = phases::declaration_checking_phase::extract_class_member_infos(
+            class_decl,
+            self.interner,
+        );
+        member_infos.append(&mut class_member_infos);
 
         // Extract parent class name first
         let parent = class_decl.extends.as_ref().and_then(|ext| {
@@ -1613,30 +1339,7 @@ impl<'a> TypeChecker<'a> {
         // Critical errors (abstract methods in non-abstract class, multiple constructors)
         // should fail hard. Other errors become warnings to prevent cascading failures.
         if let Some(err) = first_member_error {
-            // Check if this is a critical error that should fail the compilation
-            let is_critical_error = (err.message.contains("Abstract method")
-                && err.message.contains("abstract class"))
-                || err.message.contains("one constructor")
-                || err
-                    .message
-                    .contains("Decorators require decorator features")
-                || err.message.contains("Cannot override final method")
-                || err.message.contains("is incompatible with parent")
-                || err.message.contains("must implement abstract method")
-                || err.message.contains("uses override but class")
-                || err
-                    .message
-                    .contains("marked as override but parent class does not have this method")
-                || err.message.contains("Return type mismatch")
-                || err.message.contains("is private and only accessible")
-                || err.message.contains("is protected and only accessible")
-                || err.message.contains("operators can have 0 parameters")
-                || err.message.contains("Binary operator must have exactly")
-                || err.message.contains("Operator must have 0, 1, or 2")
-                || err.message.contains("must have exactly 2 parameters")
-                || err.message.contains("must return 'boolean'");
-
-            if is_critical_error {
+            if phases::declaration_checking_phase::is_critical_member_error(&err.message) {
                 return Err(err);
             } else {
                 // Non-critical errors become warnings
@@ -1963,25 +1666,12 @@ impl<'a> TypeChecker<'a> {
                 }
             }
 
-            // Register type parameters if generic
-            if let Some(type_params) = &method.type_parameters {
-                for type_param in type_params {
-                    let param_name = self.interner.resolve(type_param.name.node).to_string();
-                    let param_type = Type::new(
-                        TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                            name: type_param.name.clone(),
-                            type_arguments: None,
-                            span: type_param.span,
-                        }),
-                        type_param.span,
-                    );
-
-                    self.type_env.remove_type_alias(&param_name);
-                    self.type_env
-                        .register_type_alias(param_name, param_type)
-                        .map_err(|e| TypeCheckError::new(e, type_param.span))?;
-                }
-            }
+            // Register type parameters if generic (with duplicate checking and constraint support)
+            phases::declaration_checking_phase::register_function_type_parameters(
+                method.type_parameters.as_deref(),
+                &mut self.type_env,
+                self.interner,
+            )?;
 
             // Declare parameters
             for param in &method.parameters {

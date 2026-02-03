@@ -767,3 +767,54 @@ pub fn check_implements_assignable(
     }
     false
 }
+
+/// Validate class inheritance - checks for final parent and circular inheritance.
+///
+/// This focused function validates that a class's inheritance is valid:
+/// - Parent class is not marked as final
+/// - No circular inheritance exists
+///
+/// # Returns
+///
+/// Returns Ok(parent_name) if inheritance is valid, or an error if validation fails.
+pub fn validate_class_inheritance(
+    class_name: &str,
+    extends_type: &typedlua_parser::ast::types::Type,
+    access_control: &crate::visitors::AccessControl,
+    class_parents: &mut rustc_hash::FxHashMap<String, String>,
+    interner: &typedlua_parser::string_interner::StringInterner,
+    span: typedlua_parser::span::Span,
+) -> Result<String, crate::TypeCheckError> {
+    use typedlua_parser::ast::types::TypeKind;
+
+    if let TypeKind::Reference(type_ref) = &extends_type.kind {
+        let parent_name = interner.resolve(type_ref.name.node).to_string();
+
+        // Check if parent class is final
+        if access_control.is_class_final(&parent_name) {
+            return Err(crate::TypeCheckError::new(
+                format!("Cannot extend final class {}", parent_name),
+                span,
+            ));
+        }
+
+        // Check for circular inheritance
+        class_parents.insert(class_name.to_string(), parent_name.clone());
+        if has_circular_inheritance(class_name, class_parents) {
+            return Err(crate::TypeCheckError::new(
+                format!(
+                    "Circular inheritance detected: class '{}' inherits from itself through the inheritance chain",
+                    class_name
+                ),
+                span,
+            ));
+        }
+
+        Ok(parent_name)
+    } else {
+        Err(crate::TypeCheckError::new(
+            "Class can only extend another class (type reference)",
+            span,
+        ))
+    }
+}
