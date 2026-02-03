@@ -11,7 +11,7 @@ pub enum ServiceLifetime {
     Singleton,
 }
 
-type FactoryFn = Box<dyn Fn(&mut DiContainer) -> Box<dyn Any + Send + Sync> + Send + Sync>;
+type FactoryFn = Arc<dyn Fn(&mut DiContainer) -> Box<dyn Any + Send + Sync> + Send + Sync>;
 
 /// Dependency Injection container for managing service lifetimes and resolution
 pub struct DiContainer {
@@ -49,7 +49,7 @@ impl DiContainer {
         self.factories.insert(
             type_id,
             (
-                Box::new(move |container| Box::new(factory(container))),
+                Arc::new(move |container| Box::new(factory(container))),
                 lifetime,
             ),
         );
@@ -74,10 +74,12 @@ impl DiContainer {
             return singleton.downcast_ref::<T>().cloned();
         }
 
-        // Create new instance
-        let factory_tuple = self.factories.get(&type_id)?;
-        let instance = (factory_tuple.0)(self);
-        let lifetime = factory_tuple.1;
+        // Create new instance - we need to handle the borrowing carefully
+        let (factory, lifetime) = {
+            let factory_tuple = self.factories.get(&type_id)?;
+            (factory_tuple.0.clone(), factory_tuple.1)
+        };
+        let instance = factory(self);
 
         // Cache if singleton
         if matches!(lifetime, ServiceLifetime::Singleton) {
