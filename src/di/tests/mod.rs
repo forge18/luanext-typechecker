@@ -6,4 +6,5 @@ mod container_tests;
 mod debug_test;
 mod error_tests;
 mod integration_tests;
+mod minimal_test;
 mod simple_singleton_test;

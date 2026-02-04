@@ -70,25 +70,32 @@ impl DiContainer {
         let type_id = TypeId::of::<T>();
 
         // Check singletons first
-        if let Some(singleton) = self.singletons.get(&type_id) {
-            return singleton.downcast_ref::<T>().cloned();
+        if let Some(singleton_arc) = self.singletons.get(&type_id) {
+            if let Some(singleton_ref) = singleton_arc.downcast_ref::<T>() {
+                return Some(singleton_ref.clone());
+            }
+            // If downcast fails, remove the invalid entry and continue
+            self.singletons.remove(&type_id);
         }
 
-        // Create new instance - we need to handle the borrowing carefully
+        // Create new instance
         let (factory, lifetime) = {
             let factory_tuple = self.factories.get(&type_id)?;
             (factory_tuple.0.clone(), factory_tuple.1)
         };
         let instance = factory(self);
 
-        // Cache if singleton
+        // Extract the value for caching
+        let result = instance.downcast::<T>().ok().map(|t| (*t).clone());
+
+        // Cache if singleton and we successfully extracted the value
         if matches!(lifetime, ServiceLifetime::Singleton) {
-            let arc_instance = Arc::new(instance);
-            self.singletons.insert(type_id, arc_instance.clone());
-            return arc_instance.downcast_ref::<T>().cloned();
+            if let Some(value) = result.as_ref() {
+                self.singletons.insert(type_id, Arc::new(value.clone()));
+            }
         }
 
-        instance.downcast::<T>().ok().map(|t| (*t).clone())
+        result
     }
 
     /// Check if a service is registered
