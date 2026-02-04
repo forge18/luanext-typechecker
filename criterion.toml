@@ -1,0 +1,61 @@
+# Benchmark configuration for TypedLua Typechecker
+
+[benchmarks]
+# Sample size for each benchmark
+sample_size = 10
+# Number of iterations for each measurement
+iterations = 3
+# Warm-up time in milliseconds
+warm_up_time = 1000
+# Measurement time in milliseconds
+measurement_time = 5000
+
+# Individual benchmark settings
+[[benchmarks]]
+name = "synthetic_expressions"
+filter = "synthetic_exprs"
+
+[[benchmarks]]
+name = "synthetic_types"
+filter = "synthetic_types"
+
+[[benchmarks]]
+name = "many_variables"
+filter = "many_variables"
+
+[[benchmarks]]
+name = "nested_functions"
+filter = "nested_functions"
+
+[[benchmarks]]
+name = "generic_functions"
+filter = "generic_functions"
+
+[[benchmarks]]
+name = "method_calls"
+filter = "method_calls"
+
+[[benchmarks]]
+name = "union_types"
+filter = "union_types"
+
+[[benchmarks]]
+name = "table_literals"
+filter = "table_literals"
+
+[[benchmarks]]
+name = "interface_heavy"
+filter = "interface_heavy"
+
+[[benchmarks]]
+name = "class_heavy"
+filter = "class_heavy"
+
+# Generate ASCII tables for output
+[output]
+ascii_tables = true
+
+# Plot configuration
+[plots]
+print = true
+save = { directory = "target/criterion" }
