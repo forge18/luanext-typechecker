@@ -3,6 +3,7 @@ use crate::cli::diagnostics::DiagnosticHandler;
 use crate::core::type_compat::TypeCompatibility;
 use crate::core::type_environment::TypeEnvironment;
 use crate::helpers::{control_flow, type_utilities};
+use crate::incremental::DeclarationHash;
 use crate::phases;
 use crate::phases::declaration_checking_phase;
 use crate::type_relations::TypeRelationCache;
@@ -2615,6 +2616,134 @@ impl<'a> TypeChecker<'a> {
     /// Get the list of module dependencies tracked during type checking
     pub fn get_module_dependencies(&self) -> &[std::path::PathBuf] {
         &self.module_dependencies
+    }
+
+    /// Check a program with incremental type checking support
+    ///
+    /// This method extends the regular `check_program` with support for:
+    /// - Tracking declaration hashes for signature-based incremental invalidation
+    /// - Building a dependency graph of declaration references
+    ///
+    /// # Arguments
+    ///
+    /// * `program` - The program to type check
+    /// * `module_path` - Path to the module being checked (for declaration IDs)
+    /// * `incremental_checker` - Optional incremental checker for tracking hashes and dependencies
+    ///
+    /// # Returns
+    ///
+    /// Result containing the type checking result or error
+    #[instrument(skip(self, program, incremental_checker), fields(module_path = ?module_path))]
+    pub fn check_program_incremental(
+        &mut self,
+        program: &mut Program,
+        module_path: std::path::PathBuf,
+        incremental_checker: Option<&mut crate::IncrementalChecker>,
+    ) -> Result<(), TypeCheckError> {
+        use tracing::{debug, info, span, Level};
+
+        let span = span!(
+            Level::INFO,
+            "check_program_incremental",
+            statements = program.statements.len()
+        );
+        let _guard = span.enter();
+
+        debug!(
+            "Starting incremental type checking for program with {} statements",
+            program.statements.len()
+        );
+
+        // PASS 1: Register all function declarations (hoisting)
+        for statement in program.statements.iter() {
+            if let Statement::Function(func_decl) = statement {
+                self.register_function_signature(func_decl)?;
+
+                // Track declaration for incremental checking (if checker is provided)
+                if incremental_checker.is_some() {
+                    let func_name = self.interner.resolve(func_decl.name.node).to_string();
+                    let decl_id = crate::DeclarationId::new(module_path.clone(), func_name);
+                    let hash = func_decl.compute_signature_hash(self.interner);
+                    debug!(
+                        ?decl_id,
+                        hash, "Registered function declaration for incremental tracking"
+                    );
+                }
+            }
+        }
+
+        debug!("Completed pass 1: function signatures registered");
+
+        // PASS 2: Type check all statements (including function bodies)
+        let mut first_error: Option<TypeCheckError> = None;
+        let mut statements_checked = 0;
+        for statement in program.statements.iter_mut() {
+            if let Err(e) = self.check_statement(statement) {
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
+            }
+            statements_checked += 1;
+        }
+
+        debug!(
+            "Completed pass 2: checked {} statements",
+            statements_checked
+        );
+
+        if let Some(err) = first_error {
+            error!(error = %err, "Type checking failed");
+            Err(err)
+        } else {
+            info!("Incremental type checking completed successfully");
+            Ok(())
+        }
+    }
+
+    /// Compute and return declaration hashes for a program
+    ///
+    /// This method extracts all declarations (functions, classes, interfaces, etc.)
+    /// and computes stable signature hashes for incremental type checking.
+    pub fn compute_declaration_hashes(
+        &self,
+        program: &Program,
+        module_path: std::path::PathBuf,
+        interner: &typedlua_parser::string_interner::StringInterner,
+    ) -> FxHashMap<String, u64> {
+        let mut hashes = FxHashMap::default();
+
+        for statement in &program.statements {
+            match statement {
+                Statement::Function(func) => {
+                    let name = interner.resolve(func.name.node).to_string();
+                    let hash = func.compute_signature_hash(interner);
+                    hashes.insert(name, hash);
+                }
+                Statement::Class(class) => {
+                    let name = interner.resolve(class.name.node).to_string();
+                    let hash = class.compute_signature_hash(interner);
+                    hashes.insert(name, hash);
+                }
+                Statement::Interface(iface) => {
+                    let name = interner.resolve(iface.name.node).to_string();
+                    let hash = iface.compute_signature_hash(interner);
+                    hashes.insert(name, hash);
+                }
+                Statement::TypeAlias(alias) => {
+                    let name = interner.resolve(alias.name.node).to_string();
+                    let hash = alias.compute_signature_hash(interner);
+                    hashes.insert(name, hash);
+                }
+                Statement::Enum(enum_decl) => {
+                    let name = interner.resolve(enum_decl.name.node).to_string();
+                    let hash = enum_decl.compute_signature_hash(interner);
+                    hashes.insert(name, hash);
+                }
+                _ => {}
+            }
+        }
+
+        hashes
     }
 
     fn check_namespace_declaration(

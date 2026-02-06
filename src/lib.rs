@@ -18,7 +18,8 @@ pub use core::type_compat::TypeCompatibility;
 pub use core::type_environment::TypeEnvironment;
 pub use di::{DiContainer, ServiceLifetime};
 pub use incremental::{
-    CompilationCache, DeclarationId, DependencyGraph, IncrementalChecker, InvalidationResult,
+    CompilationCache, DeclarationHash, DeclarationId, DependencyGraph, IncrementalChecker,
+    InvalidationResult,
 };
 pub use state::TypeCheckerState;
 pub use types::generics::{
@@ -63,3 +64,14 @@ impl std::fmt::Display for TypeCheckError {
 }
 
 impl std::error::Error for TypeCheckError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_check_error_display() {
+        let error = TypeCheckError::new("test error", Span::new(0, 10, 1, 2));
+        assert_eq!(format!("{}", error), "test error at 1:2");
+    }
+}
