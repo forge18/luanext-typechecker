@@ -7,6 +7,7 @@ pub mod phases;
 pub mod state;
 pub mod stdlib;
 pub mod test_utils;
+pub mod type_relations;
 pub mod types;
 pub mod utils;
 pub mod visitors;

@@ -5,6 +5,7 @@ use crate::core::type_environment::TypeEnvironment;
 use crate::helpers::{control_flow, type_utilities};
 use crate::phases;
 use crate::phases::declaration_checking_phase;
+use crate::type_relations::TypeRelationCache;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{
     AccessControl, AccessControlVisitor, ClassContext, ClassMemberInfo, ClassMemberKind,
@@ -52,6 +53,8 @@ pub struct TypeChecker<'a> {
     diagnostic_handler: Arc<dyn DiagnosticHandler>,
     interner: &'a typedlua_parser::string_interner::StringInterner,
     common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+    /// Type relation cache for subtype checking
+    type_relation_cache: TypeRelationCache,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -90,6 +93,7 @@ impl<'a> TypeChecker<'a> {
             diagnostic_handler,
             interner,
             common,
+            type_relation_cache: TypeRelationCache::new(),
         }
     }
 
@@ -139,6 +143,7 @@ impl<'a> TypeChecker<'a> {
             diagnostic_handler,
             interner,
             common,
+            type_relation_cache: TypeRelationCache::new(),
         }
     }
 
@@ -395,7 +400,11 @@ impl<'a> TypeChecker<'a> {
             let deep_ann = self.deep_resolve_type(&resolved_type_ann);
 
             // Check that initializer is assignable to declared type
-            if !TypeCompatibility::is_assignable(&deep_init, &deep_ann) {
+            if !TypeCompatibility::is_assignable_with_cache(
+                &deep_init,
+                &deep_ann,
+                &mut self.type_relation_cache,
+            ) {
                 // Fallback: check if source class implements the target interface.
                 // Use original init_type and type_ann (pre-evaluation) since evaluate_type
                 // resolves interface references to ObjectType, losing the interface name.
@@ -738,8 +747,11 @@ impl<'a> TypeChecker<'a> {
                         expected_type.clone()
                     };
 
-                if !TypeCompatibility::is_assignable(&actual_return_type, &effective_expected_type)
-                {
+                if !TypeCompatibility::is_assignable_with_cache(
+                    &actual_return_type,
+                    &effective_expected_type,
+                    &mut self.type_relation_cache,
+                ) {
                     return Err(TypeCheckError::new(
                         "Return type mismatch",
                         return_stmt.span,
@@ -750,7 +762,11 @@ impl<'a> TypeChecker<'a> {
             // Check that void return is allowed
             if let Some(expected_type) = &self.current_function_return_type {
                 let void_type = self.type_env.get_void_type(return_stmt.span);
-                if !TypeCompatibility::is_assignable(&void_type, expected_type) {
+                if !TypeCompatibility::is_assignable_with_cache(
+                    &void_type,
+                    expected_type,
+                    &mut self.type_relation_cache,
+                ) {
                     return Err(TypeCheckError::new(
                         "Function expects a return value",
                         return_stmt.span,
@@ -1302,7 +1318,11 @@ impl<'a> TypeChecker<'a> {
                         {
                             let arg_type = self.infer_expression_type(arg)?;
                             let param_type = &param.type_annotation;
-                            if !TypeCompatibility::is_assignable(&arg_type, param_type) {
+                            if !TypeCompatibility::is_assignable_with_cache(
+                                &arg_type,
+                                param_type,
+                                &mut self.type_relation_cache,
+                            ) {
                                 return Err(TypeCheckError::new(
                                     format!(
                                         "Parent constructor argument {} type mismatch: expected '{:?}', found '{:?}'",
@@ -1621,7 +1641,11 @@ impl<'a> TypeChecker<'a> {
             let init_type = self.infer_expression_type(initializer)?;
 
             // Verify initializer type is assignable to declared type
-            if !TypeCompatibility::is_assignable(&init_type, &prop.type_annotation) {
+            if !TypeCompatibility::is_assignable_with_cache(
+                &init_type,
+                &prop.type_annotation,
+                &mut self.type_relation_cache,
+            ) {
                 return Err(TypeCheckError::new(
                     format!(
                         "Property '{}' initializer type does not match declared type",

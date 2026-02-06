@@ -1,3 +1,4 @@
+use crate::type_relations::TypeRelationCache;
 use std::collections::HashSet;
 use typedlua_parser::ast::expression::Literal;
 use typedlua_parser::ast::types::{
@@ -16,6 +17,36 @@ impl TypeCompatibility {
     pub fn is_assignable(source: &Type, target: &Type) -> bool {
         let mut visited: HashSet<(usize, usize)> = HashSet::new();
         Self::is_assignable_recursive(source, target, &mut visited)
+    }
+
+    /// Check if `source` is assignable to `target` with optional cache
+    pub fn is_assignable_with_cache(
+        source: &Type,
+        target: &Type,
+        cache: &mut TypeRelationCache,
+    ) -> bool {
+        let mut visited: HashSet<(usize, usize)> = HashSet::new();
+        Self::is_assignable_with_cache_recursive(source, target, &mut visited, cache)
+    }
+
+    fn is_assignable_with_cache_recursive(
+        source: &Type,
+        target: &Type,
+        visited: &mut HashSet<(usize, usize)>,
+        cache: &mut TypeRelationCache,
+    ) -> bool {
+        // Check cache first
+        if let Some(cached) = cache.get(source, target) {
+            return cached;
+        }
+
+        // Recursively check
+        let result = Self::is_assignable_recursive(source, target, visited);
+
+        // Store in cache
+        cache.insert(source, target, result);
+
+        result
     }
 
     fn is_assignable_recursive(
