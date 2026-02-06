@@ -27,13 +27,13 @@ use typedlua_parser::ast::types::Type;
 /// - Better testability (state can be created independently)
 /// - Phase-based decomposition (different phases can share state)
 /// - Reduced cognitive load (state is separated from logic)
-pub struct TypeCheckerState<'a> {
+pub struct TypeCheckerState<'a, 'arena> {
     /// Symbol table for tracking variable and type declarations
-    pub symbol_table: SymbolTable,
+    pub symbol_table: SymbolTable<'arena>,
     /// Type environment for type checking and inference
-    pub type_env: TypeEnvironment,
+    pub type_env: TypeEnvironment<'arena>,
     /// Current function's return type (for return statement validation)
-    pub current_function_return_type: Option<Type>,
+    pub current_function_return_type: Option<Type<'arena>>,
     /// Type narrowing state for control flow analysis
     pub narrowing: TypeNarrower,
     /// Access control for class inheritance and visibility
@@ -59,14 +59,14 @@ pub struct TypeCheckerState<'a> {
     /// Current namespace path for this module
     pub current_namespace: Option<Vec<String>>,
     /// Type parameters for each generic class (needed for override checking)
-    pub class_type_params: FxHashMap<String, Vec<TypeParameter>>,
+    pub class_type_params: FxHashMap<String, Vec<TypeParameter<'arena>>>,
     /// Track class inheritance for circular dependency detection
     pub class_parents: FxHashMap<String, String>,
     /// Track exported names to detect duplicates
     pub exported_names: HashSet<String>,
 }
 
-impl<'a> TypeCheckerState<'a> {
+impl<'a, 'arena> TypeCheckerState<'a, 'arena> {
     /// Create a new type checker state with default values
     pub fn new(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
@@ -248,7 +248,7 @@ mod tests {
     use std::sync::Arc;
     use typedlua_parser::string_interner::StringInterner;
 
-    fn create_test_state() -> TypeCheckerState<'static> {
+    fn create_test_state() -> TypeCheckerState<'static, 'static> {
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common) = StringInterner::new_with_common_identifiers();
         // Leak the interner to get a 'static reference for tests

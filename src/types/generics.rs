@@ -7,8 +7,8 @@ use typedlua_parser::string_interner::StringId;
 use typedlua_parser::span::Span;
 
 /// Substitutes type parameters with concrete types in a type
-pub fn instantiate_type(
-    typ: &Type,
+pub fn instantiate_type<'arena>(
+    typ: &Type<'arena>,
     type_params: &[TypeParameter],
     type_args: &[Type],
 ) -> Result<Type, String> {
@@ -21,7 +21,7 @@ pub fn instantiate_type(
     }
 
     // Build substitution map
-    let mut substitutions: FxHashMap<StringId, Type> = FxHashMap::default();
+    let mut substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
     for (param, arg) in type_params.iter().zip(type_args.iter()) {
         substitutions.insert(param.name.node, arg.clone());
     }
@@ -30,7 +30,7 @@ pub fn instantiate_type(
 }
 
 /// Recursively substitute type parameters in a type
-fn substitute_type(typ: &Type, substitutions: &FxHashMap<StringId, Type>) -> Result<Type, String> {
+fn substitute_type(typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type, String> {
     match &typ.kind {
         // If this is a type reference that matches a type parameter, substitute it
         TypeKind::Reference(type_ref) => {
@@ -59,7 +59,7 @@ fn substitute_type(typ: &Type, substitutions: &FxHashMap<StringId, Type>) -> Res
                         .collect();
 
                     Ok(Type::new(
-                        TypeKind::Reference(TypeReference {
+                        TypeKind::Reference(TypeReference<'arena> {
                             name: type_ref.name.clone(),
                             type_arguments: Some(substituted_args?),
                             span: type_ref.span,
@@ -118,13 +118,13 @@ fn substitute_type(typ: &Type, substitutions: &FxHashMap<StringId, Type>) -> Res
         TypeKind::Function(func_type) => {
             use typedlua_parser::ast::statement::Parameter;
 
-            let substituted_params: Result<Vec<Parameter>, String> = func_type
+            let substituted_params: Result<Vec<Parameter<'arena>>, String> = func_type
                 .parameters
                 .iter()
                 .map(|param| {
                     if let Some(ref type_ann) = param.type_annotation {
                         let substituted = substitute_type(type_ann, substitutions)?;
-                        Ok(Parameter {
+                        Ok(Parameter<'arena> {
                             pattern: param.pattern.clone(),
                             type_annotation: Some(substituted),
                             default: param.default.clone(),
@@ -175,13 +175,13 @@ fn substitute_type(typ: &Type, substitutions: &FxHashMap<StringId, Type>) -> Res
             use typedlua_parser::ast::statement::{MethodSignature, PropertySignature};
             use typedlua_parser::ast::types::ObjectTypeMember;
 
-            let mut substituted_members: Vec<ObjectTypeMember> = Vec::new();
+            let mut substituted_members: Vec<ObjectTypeMember<'arena>> = Vec::new();
             for member in &obj_type.members {
                 let substituted = match member {
                     ObjectTypeMember::Property(prop) => {
                         let substituted_type =
                             substitute_type(&prop.type_annotation, substitutions)?;
-                        ObjectTypeMember::Property(PropertySignature {
+                        ObjectTypeMember::Property(PropertySignature<'arena> {
                             type_annotation: substituted_type,
                             ..prop.clone()
                         })
@@ -192,7 +192,7 @@ fn substitute_type(typ: &Type, substitutions: &FxHashMap<StringId, Type>) -> Res
                         let substituted_return =
                             substitute_type(&method.return_type, substitutions)?;
 
-                        ObjectTypeMember::Method(MethodSignature {
+                        ObjectTypeMember::Method(MethodSignature<'arena> {
                             return_type: substituted_return,
                             ..method.clone()
                         })
@@ -258,18 +258,18 @@ pub fn check_type_constraints(
 
 /// Check if a type is compatible with a constraint
 /// Uses the TypeCompatibility module for proper checking
-fn is_type_compatible(arg: &Type, constraint: &Type) -> bool {
+fn is_type_compatible(arg: &Type<'arena>, constraint: &Type<'arena>) -> bool {
     use crate::core::type_compat::TypeCompatibility;
     TypeCompatibility::is_assignable(arg, constraint)
 }
 
 /// Infer type arguments for a generic function from argument types
 /// Returns a map from type parameter name to inferred type
-pub fn infer_type_arguments(
+pub fn infer_type_arguments<'arena>(
     type_params: &[TypeParameter],
     function_params: &[typedlua_parser::ast::statement::Parameter],
     arg_types: &[Type],
-) -> Result<Vec<Type>, String> {
+) -> Result<Vec<Type<'arena>>, String> {
     if function_params.len() != arg_types.len() {
         return Err(format!(
             "Expected {} arguments, got {}",
@@ -278,7 +278,7 @@ pub fn infer_type_arguments(
         ));
     }
 
-    let mut inferred: FxHashMap<StringId, Type> = FxHashMap::default();
+    let mut inferred: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
 
     // For each parameter-argument pair, try to infer type arguments
     for (param, arg_type) in function_params.iter().zip(arg_types.iter()) {
@@ -306,10 +306,10 @@ pub fn infer_type_arguments(
 }
 
 /// Helper to infer type arguments by matching param_type pattern against arg_type
-fn infer_from_types(
-    param_type: &Type,
-    arg_type: &Type,
-    inferred: &mut FxHashMap<StringId, Type>,
+fn infer_from_types<'arena>(
+    param_type: &Type<'arena>,
+    arg_type: &Type<'arena>,
+    inferred: &mut FxHashMap<StringId, Type<'arena>>,
 ) -> Result<(), String> {
     match &param_type.kind {
         // If parameter is a type reference (e.g., T), and it's a type parameter
@@ -365,7 +365,7 @@ fn infer_from_types(
 }
 
 /// Simple type equality check (simplified)
-fn types_equal(t1: &Type, t2: &Type) -> bool {
+fn types_equal(t1: &Type<'arena>, t2: &Type<'arena>) -> bool {
     // Simplified - just check if both are the same primitive
     match (&t1.kind, &t2.kind) {
         (TypeKind::Primitive(p1), TypeKind::Primitive(p2)) => p1 == p2,
@@ -379,10 +379,10 @@ fn types_equal(t1: &Type, t2: &Type) -> bool {
 // =============================================================================
 
 /// Build a substitution map from type parameters and type arguments
-pub fn build_substitutions(
+pub fn build_substitutions<'arena>(
     type_params: &[TypeParameter],
     type_args: &[Type],
-) -> Result<FxHashMap<StringId, Type>, String> {
+) -> Result<FxHashMap<StringId, Type<'arena>>, String> {
     if type_params.len() != type_args.len() {
         return Err(format!(
             "Expected {} type arguments, but got {}",
@@ -391,7 +391,7 @@ pub fn build_substitutions(
         ));
     }
 
-    let mut substitutions: FxHashMap<StringId, Type> = FxHashMap::default();
+    let mut substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
     for (param, arg) in type_params.iter().zip(type_args.iter()) {
         substitutions.insert(param.name.node, arg.clone());
     }
@@ -400,13 +400,13 @@ pub fn build_substitutions(
 
 /// Instantiate a block with type substitutions
 /// Clones the block and substitutes type annotations in all statements
-pub fn instantiate_block(
+pub fn instantiate_block<'arena>(
     block: &typedlua_parser::ast::statement::Block,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::statement::Block {
     use typedlua_parser::ast::statement::Block;
 
-    Block {
+    Block<'arena> {
         statements: block
             .statements
             .iter()
@@ -417,17 +417,17 @@ pub fn instantiate_block(
 }
 
 /// Instantiate a statement with type substitutions
-pub fn instantiate_statement(
+pub fn instantiate_statement<'arena>(
     stmt: &typedlua_parser::ast::statement::Statement,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::statement::Statement {
     use typedlua_parser::ast::statement::{
-        ElseIf, ForGeneric, ForNumeric, ForStatement, IfStatement, RepeatStatement,
-        ReturnStatement, Statement, ThrowStatement, VariableDeclaration, WhileStatement,
+        ElseIf<'arena>, ForGeneric<'arena>, ForNumeric<'arena>, ForStatement<'arena>, IfStatement<'arena>, RepeatStatement<'arena>,
+        ReturnStatement<'arena>, Statement<'arena>, ThrowStatement, VariableDeclaration<'arena>, WhileStatement<'arena>,
     };
 
     match stmt {
-        Statement::Variable(var_decl) => Statement::Variable(VariableDeclaration {
+        Statement::Variable(var_decl) => Statement::Variable(VariableDeclaration<'arena> {
             kind: var_decl.kind,
             pattern: var_decl.pattern.clone(),
             type_annotation: var_decl
@@ -446,7 +446,7 @@ pub fn instantiate_statement(
             Statement::Expression(instantiate_expression(expr, substitutions))
         }
 
-        Statement::Return(ret) => Statement::Return(ReturnStatement {
+        Statement::Return(ret) => Statement::Return(ReturnStatement<'arena> {
             values: ret
                 .values
                 .iter()
@@ -455,13 +455,13 @@ pub fn instantiate_statement(
             span: ret.span,
         }),
 
-        Statement::If(if_stmt) => Statement::If(IfStatement {
+        Statement::If(if_stmt) => Statement::If(IfStatement<'arena> {
             condition: instantiate_expression(&if_stmt.condition, substitutions),
             then_block: instantiate_block(&if_stmt.then_block, substitutions),
             else_ifs: if_stmt
                 .else_ifs
                 .iter()
-                .map(|elif| ElseIf {
+                .map(|elif| ElseIf<'arena> {
                     condition: instantiate_expression(&elif.condition, substitutions),
                     block: instantiate_block(&elif.block, substitutions),
                     span: elif.span,
@@ -474,14 +474,14 @@ pub fn instantiate_statement(
             span: if_stmt.span,
         }),
 
-        Statement::While(while_stmt) => Statement::While(WhileStatement {
+        Statement::While(while_stmt) => Statement::While(WhileStatement<'arena> {
             condition: instantiate_expression(&while_stmt.condition, substitutions),
             body: instantiate_block(&while_stmt.body, substitutions),
             span: while_stmt.span,
         }),
 
         Statement::For(for_stmt) => Statement::For(Box::new(match for_stmt.as_ref() {
-            ForStatement::Numeric(num) => ForStatement::Numeric(Box::new(ForNumeric {
+            ForStatement::Numeric(num) => ForStatement::Numeric(Box::new(ForNumeric<'arena> {
                 variable: num.variable.clone(),
                 start: instantiate_expression(&num.start, substitutions),
                 end: instantiate_expression(&num.end, substitutions),
@@ -492,7 +492,7 @@ pub fn instantiate_statement(
                 body: instantiate_block(&num.body, substitutions),
                 span: num.span,
             })),
-            ForStatement::Generic(gen) => ForStatement::Generic(ForGeneric {
+            ForStatement::Generic(gen) => ForStatement::Generic(ForGeneric<'arena> {
                 variables: gen.variables.clone(),
                 iterators: gen
                     .iterators
@@ -504,7 +504,7 @@ pub fn instantiate_statement(
             }),
         })),
 
-        Statement::Repeat(repeat) => Statement::Repeat(RepeatStatement {
+        Statement::Repeat(repeat) => Statement::Repeat(RepeatStatement<'arena> {
             body: instantiate_block(&repeat.body, substitutions),
             until: instantiate_expression(&repeat.until, substitutions),
             span: repeat.span,
@@ -540,9 +540,9 @@ pub fn instantiate_statement(
 }
 
 /// Instantiate a function declaration with type substitutions
-pub fn instantiate_function_declaration(
+pub fn instantiate_function_declaration<'arena>(
     func: &typedlua_parser::ast::statement::FunctionDeclaration,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::statement::FunctionDeclaration {
     typedlua_parser::ast::statement::FunctionDeclaration {
         name: func.name.clone(),
@@ -563,9 +563,9 @@ pub fn instantiate_function_declaration(
 }
 
 /// Instantiate a parameter with type substitutions
-pub fn instantiate_parameter(
+pub fn instantiate_parameter<'arena>(
     param: &typedlua_parser::ast::statement::Parameter,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::statement::Parameter {
     typedlua_parser::ast::statement::Parameter {
         pattern: param.pattern.clone(),
@@ -584,9 +584,9 @@ pub fn instantiate_parameter(
 }
 
 /// Instantiate an expression with type substitutions
-pub fn instantiate_expression(
+pub fn instantiate_expression<'arena>(
     expr: &typedlua_parser::ast::expression::Expression,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::Expression {
     use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 
@@ -759,7 +759,7 @@ pub fn instantiate_expression(
         ExpressionKind::SuperKeyword => ExpressionKind::SuperKeyword,
     };
 
-    Expression {
+    Expression<'arena> {
         kind: new_kind,
         span: expr.span,
         annotated_type: expr
@@ -771,9 +771,9 @@ pub fn instantiate_expression(
 }
 
 /// Helper to instantiate an argument
-fn instantiate_argument(
+fn instantiate_argument<'arena>(
     arg: &typedlua_parser::ast::expression::Argument,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::Argument {
     typedlua_parser::ast::expression::Argument {
         value: instantiate_expression(&arg.value, substitutions),
@@ -783,9 +783,9 @@ fn instantiate_argument(
 }
 
 /// Helper to instantiate an array element
-fn instantiate_array_element(
+fn instantiate_array_element<'arena>(
     elem: &typedlua_parser::ast::expression::ArrayElement,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::ArrayElement {
     use typedlua_parser::ast::expression::ArrayElement;
     match elem {
@@ -797,9 +797,9 @@ fn instantiate_array_element(
 }
 
 /// Helper to instantiate an object property
-fn instantiate_object_property(
+fn instantiate_object_property<'arena>(
     prop: &typedlua_parser::ast::expression::ObjectProperty,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::ObjectProperty {
     use typedlua_parser::ast::expression::ObjectProperty;
     match prop {
@@ -821,9 +821,9 @@ fn instantiate_object_property(
 }
 
 /// Helper to instantiate a function expression
-fn instantiate_function_expression(
+fn instantiate_function_expression<'arena>(
     func: &typedlua_parser::ast::expression::FunctionExpression,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::FunctionExpression {
     typedlua_parser::ast::expression::FunctionExpression {
         type_parameters: None, // Remove type parameters after specialization
@@ -842,12 +842,12 @@ fn instantiate_function_expression(
 }
 
 /// Helper to instantiate an arrow function
-fn instantiate_arrow_function(
+fn instantiate_arrow_function<'arena>(
     arrow: &typedlua_parser::ast::expression::ArrowFunction,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::ArrowFunction {
     use typedlua_parser::ast::expression::{ArrowBody, ArrowFunction};
-    ArrowFunction {
+    ArrowFunction<'arena> {
         parameters: arrow
             .parameters
             .iter()
@@ -868,12 +868,12 @@ fn instantiate_arrow_function(
 }
 
 /// Helper to instantiate a template literal
-fn instantiate_template_literal(
+fn instantiate_template_literal<'arena>(
     template: &typedlua_parser::ast::expression::TemplateLiteral,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::TemplateLiteral {
     use typedlua_parser::ast::expression::{TemplateLiteral, TemplatePart};
-    TemplateLiteral {
+    TemplateLiteral<'arena> {
         parts: template
             .parts
             .iter()
@@ -889,12 +889,12 @@ fn instantiate_template_literal(
 }
 
 /// Helper to instantiate a match expression
-fn instantiate_match_expression(
+fn instantiate_match_expression<'arena>(
     match_expr: &typedlua_parser::ast::expression::MatchExpression,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::MatchExpression {
     use typedlua_parser::ast::expression::{MatchArm, MatchArmBody, MatchExpression};
-    MatchExpression {
+    MatchExpression<'arena> {
         value: Box::new(instantiate_expression(&match_expr.value, substitutions)),
         arms: match_expr
             .arms
@@ -921,9 +921,9 @@ fn instantiate_match_expression(
 }
 
 /// Helper to instantiate a try expression
-fn instantiate_try_expression(
+fn instantiate_try_expression<'arena>(
     try_expr: &typedlua_parser::ast::expression::TryExpression,
-    substitutions: &FxHashMap<StringId, Type>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::TryExpression {
     typedlua_parser::ast::expression::TryExpression {
         expression: Box::new(instantiate_expression(&try_expr.expression, substitutions)),
@@ -949,7 +949,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         // Type parameter T
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -958,7 +958,7 @@ mod tests {
 
         // Type reference T
         let type_ref_t = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: Spanned::new(t_id, span),
                 type_arguments: None,
                 span,
@@ -991,7 +991,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         // Type parameter T
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1001,7 +1001,7 @@ mod tests {
         // Array<T>
         let array_t = Type::new(
             TypeKind::Array(Box::new(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1036,7 +1036,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         // Type parameter T
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1044,7 +1044,7 @@ mod tests {
         };
 
         let type_ref_t = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: Spanned::new(t_id, span),
                 type_arguments: None,
                 span,
@@ -1073,7 +1073,7 @@ mod tests {
         let _x_id = interner.intern("x");
 
         // Type parameter T
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1082,10 +1082,10 @@ mod tests {
 
         // Function parameter: (value: T)
         let value_id = interner.intern("value");
-        let func_param = Parameter {
+        let func_param = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(value_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1124,7 +1124,7 @@ mod tests {
         let values_id = interner.intern("values");
 
         // Type parameter T
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1132,11 +1132,11 @@ mod tests {
         };
 
         // Function parameter: (values: Array<T>)
-        let func_param = Parameter {
+        let func_param = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(values_id, span)),
             type_annotation: Some(Type::new(
                 TypeKind::Array(Box::new(Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1179,7 +1179,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         // Type parameter T extends number
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
@@ -1203,7 +1203,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         // Type parameter T extends number
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
@@ -1231,14 +1231,14 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: None,
             default: None,
@@ -1264,7 +1264,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1288,14 +1288,14 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: None,
             default: None,
@@ -1306,7 +1306,7 @@ mod tests {
         let tuple_type = Type::new(
             TypeKind::Tuple(vec![
                 Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1314,7 +1314,7 @@ mod tests {
                     span,
                 ),
                 Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(u_id, span),
                         type_arguments: None,
                         span,
@@ -1357,7 +1357,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1368,7 +1368,7 @@ mod tests {
         let union_type = Type::new(
             TypeKind::Union(vec![
                 Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1406,7 +1406,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1423,7 +1423,7 @@ mod tests {
                 parameters: vec![Parameter {
                     pattern: Pattern::Identifier(Spanned::new(param_id, span)),
                     type_annotation: Some(Type::new(
-                        TypeKind::Reference(TypeReference {
+                        TypeKind::Reference(TypeReference<'arena> {
                             name: Spanned::new(t_id, span),
                             type_arguments: None,
                             span,
@@ -1436,7 +1436,7 @@ mod tests {
                     span,
                 }],
                 return_type: Box::new(Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1479,7 +1479,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1489,7 +1489,7 @@ mod tests {
         // Nullable<T>
         let nullable_type = Type::new(
             TypeKind::Nullable(Box::new(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1520,7 +1520,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1531,7 +1531,7 @@ mod tests {
         let nested_array = Type::new(
             TypeKind::Array(Box::new(Type::new(
                 TypeKind::Array(Box::new(Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1571,14 +1571,14 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: None,
             default: None,
@@ -1589,10 +1589,10 @@ mod tests {
         let a_id = interner.intern("a");
         let b_id = interner.intern("b");
 
-        let param_a = Parameter {
+        let param_a = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(a_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1605,10 +1605,10 @@ mod tests {
             span,
         };
 
-        let param_b = Parameter {
+        let param_b = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(b_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(u_id, span),
                     type_arguments: None,
                     span,
@@ -1653,7 +1653,7 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1661,7 +1661,7 @@ mod tests {
         };
 
         // Type parameter U with default: string
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: None,
             default: Some(Box::new(Type::new(
@@ -1673,10 +1673,10 @@ mod tests {
 
         // Only one function parameter using T
         let a_id = interner.intern("a");
-        let param_a = Parameter {
+        let param_a = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(a_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1717,7 +1717,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1725,10 +1725,10 @@ mod tests {
         };
 
         let a_id = interner.intern("a");
-        let param_a = Parameter {
+        let param_a = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(a_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1767,7 +1767,7 @@ mod tests {
             span,
         };
 
-        let substitutions: FxHashMap<StringId, Type> = FxHashMap::default();
+        let substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
         let result = instantiate_block(&block, &substitutions);
 
         assert!(result.statements.is_empty());
@@ -1785,7 +1785,7 @@ mod tests {
             receiver_class: None,
         };
 
-        let substitutions: FxHashMap<StringId, Type> = FxHashMap::default();
+        let substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
         let result = instantiate_expression(&expr, &substitutions);
 
         assert!(matches!(
@@ -1808,7 +1808,7 @@ mod tests {
         let param = typedlua_parser::ast::statement::Parameter {
             pattern: Pattern::Identifier(Spanned::new(x_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1822,7 +1822,7 @@ mod tests {
         };
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
-        let mut substitutions: FxHashMap<StringId, Type> = FxHashMap::default();
+        let mut substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
         substitutions.insert(t_id, number_type);
 
         let result = instantiate_parameter(&param, &substitutions);
@@ -1840,7 +1840,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1850,7 +1850,7 @@ mod tests {
         // Parenthesized<T>
         let parenthesized_type = Type::new(
             TypeKind::Parenthesized(Box::new(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,
@@ -1882,14 +1882,14 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: None,
             default: None,
@@ -1900,7 +1900,7 @@ mod tests {
         let intersection_type = Type::new(
             TypeKind::Intersection(vec![
                 Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
                         span,
@@ -1908,7 +1908,7 @@ mod tests {
                     span,
                 ),
                 Type::new(
-                    TypeKind::Reference(TypeReference {
+                    TypeKind::Reference(TypeReference<'arena> {
                         name: Spanned::new(u_id, span),
                         type_arguments: None,
                         span,
@@ -1951,7 +1951,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -1966,7 +1966,7 @@ mod tests {
                     typedlua_parser::ast::statement::PropertySignature {
                         name: Spanned::new(value_id, span),
                         type_annotation: Type::new(
-                            TypeKind::Reference(TypeReference {
+                            TypeKind::Reference(TypeReference<'arena> {
                                 name: Spanned::new(t_id, span),
                                 type_arguments: None,
                                 span,
@@ -2011,7 +2011,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -2028,7 +2028,7 @@ mod tests {
                         type_parameters: None,
                         parameters: vec![],
                         return_type: Type::new(
-                            TypeKind::Reference(TypeReference {
+                            TypeKind::Reference(TypeReference<'arena> {
                                 name: Spanned::new(t_id, span),
                                 type_arguments: None,
                                 span,
@@ -2072,7 +2072,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -2088,7 +2088,7 @@ mod tests {
                         key_name: Spanned::new(key_id, span),
                         key_type: typedlua_parser::ast::statement::IndexKeyType::String,
                         value_type: Type::new(
-                            TypeKind::Reference(TypeReference {
+                            TypeKind::Reference(TypeReference<'arena> {
                                 name: Spanned::new(t_id, span),
                                 type_arguments: None,
                                 span,
@@ -2129,7 +2129,7 @@ mod tests {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
@@ -2138,7 +2138,7 @@ mod tests {
 
         // Type reference T with type arguments (should error)
         let type_ref_with_args = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: Spanned::new(t_id, span),
                 type_arguments: Some(vec![Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
@@ -2178,7 +2178,7 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
@@ -2188,7 +2188,7 @@ mod tests {
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
@@ -2213,7 +2213,7 @@ mod tests {
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
-        let type_param_t = TypeParameter {
+        let type_param_t = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
@@ -2223,7 +2223,7 @@ mod tests {
             span,
         };
 
-        let type_param_u = TypeParameter {
+        let type_param_u = TypeParameter<'arena> {
             name: Spanned::new(u_id, span),
             constraint: Some(Box::new(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
@@ -2255,7 +2255,7 @@ mod tests {
 
         let arg_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
-        let mut inferred: FxHashMap<StringId, Type> = FxHashMap::default();
+        let mut inferred: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
         let result = infer_from_types(&param_type, &arg_type, &mut inferred);
 
         assert!(result.is_ok());
@@ -2281,7 +2281,7 @@ mod tests {
         let t_id = interner.intern("T");
 
         let ref1 = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: Spanned::new(t_id, span),
                 type_arguments: None,
                 span,
@@ -2289,7 +2289,7 @@ mod tests {
             span,
         );
         let ref2 = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: Spanned::new(t_id, span),
                 type_arguments: None,
                 span,
@@ -2310,17 +2310,17 @@ mod tests {
         let t_id = interner.intern("T");
         let x_id = interner.intern("x");
 
-        let type_param = TypeParameter {
+        let type_param = TypeParameter<'arena> {
             name: Spanned::new(t_id, span),
             constraint: None,
             default: None,
             span,
         };
 
-        let param = Parameter {
+        let param = Parameter<'arena> {
             pattern: Pattern::Identifier(Spanned::new(x_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
                     span,

@@ -4,6 +4,7 @@
 //! definition files into AST programs. The caller is responsible for
 //! processing the statements (e.g., type checking, populating symbol tables).
 
+use bumpalo::Bump;
 use crate::cli::config::LuaVersion;
 use crate::cli::diagnostics::CollectingDiagnosticHandler;
 use std::sync::Arc;
@@ -61,11 +62,12 @@ use typedlua_parser::string_interner::{CommonIdentifiers, StringInterner};
 ///     }
 /// }
 /// ```
-pub fn parse_stdlib_files(
+pub fn parse_stdlib_files<'arena>(
     target_version: LuaVersion,
     interner: &StringInterner,
     common: &CommonIdentifiers,
-) -> Result<Vec<Program>, String> {
+    arena: &'arena Bump,
+) -> Result<Vec<Program<'arena>>, String> {
     use crate::stdlib;
 
     let stdlib_files = stdlib::get_all_stdlib(target_version);
@@ -78,7 +80,7 @@ pub fn parse_stdlib_files(
             .tokenize()
             .map_err(|e| format!("Failed to lex {}: {:?}", filename, e))?;
 
-        let mut parser = Parser::new(tokens, handler.clone(), interner, common);
+        let mut parser = Parser::new(tokens, handler.clone(), interner, common, arena);
         let program = parser
             .parse()
             .map_err(|e| format!("Failed to parse {}: {:?}", filename, e))?;
@@ -97,9 +99,10 @@ mod tests {
 
     #[test]
     fn test_parse_stdlib_lua51() {
+        let arena = Bump::new();
         let (interner, common) = StringInterner::new_with_common_identifiers();
 
-        let result = parse_stdlib_files(LuaVersion::Lua51, &interner, &common);
+        let result = parse_stdlib_files(LuaVersion::Lua51, &interner, &common, &arena);
 
         assert!(result.is_ok());
         let programs = result.unwrap();
@@ -126,9 +129,10 @@ mod tests {
         ];
 
         for version in versions {
+            let arena = Bump::new();
             let (interner, common) = StringInterner::new_with_common_identifiers();
 
-            let result = parse_stdlib_files(version, &interner, &common);
+            let result = parse_stdlib_files(version, &interner, &common, &arena);
 
             assert!(
                 result.is_ok(),
@@ -147,8 +151,9 @@ mod tests {
 
     #[test]
     fn test_parse_stdlib_returns_valid_programs() {
+        let arena = Bump::new();
         let (interner, common) = StringInterner::new_with_common_identifiers();
-        let programs = parse_stdlib_files(LuaVersion::Lua54, &interner, &common).unwrap();
+        let programs = parse_stdlib_files(LuaVersion::Lua54, &interner, &common, &arena).unwrap();
 
         // Verify each program is valid
         for program in programs {

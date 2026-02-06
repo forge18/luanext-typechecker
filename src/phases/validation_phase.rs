@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use typedlua_parser::ast::expression::Expression;
 use typedlua_parser::ast::statement::{
-    ClassMember, Decorator, DecoratorExpression, IndexSignature, MethodDeclaration, TypeParameter,
+    ClassMember<'arena>, Decorator<'arena>, DecoratorExpression, IndexSignature<'arena>, MethodDeclaration<'arena>, TypeParameter<'arena>,
 };
 use typedlua_parser::ast::types::{ObjectTypeMember, Type};
 use typedlua_parser::prelude::ClassDeclaration;
@@ -83,9 +83,9 @@ pub fn validate_interface_members(
 /// # Returns
 ///
 /// Returns `Ok(())` if validation passes, or an error if any property violates the constraint.
-pub fn validate_index_signature(
-    class_decl: &ClassDeclaration,
-    index_sig: &IndexSignature,
+pub fn validate_index_signature<'arena>(
+    class_decl: &ClassDeclaration<'arena>,
+    index_sig: &IndexSignature<'arena>,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
     for member in &class_decl.members {
@@ -187,12 +187,12 @@ pub fn check_decorators<F>(
     decorators: &mut [Decorator],
     enable_decorators: bool,
     interner: &StringInterner,
-    symbol_table: &SymbolTable,
+    symbol_table: &SymbolTable<'arena>,
     diagnostic_handler: &Arc<dyn DiagnosticHandler>,
     mut infer_expression_type: F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression) -> Result<Type, TypeCheckError>,
+    F: FnMut(&mut Expression<'arena>) -> Result<Type, TypeCheckError>,
 {
     // Check if decorators are enabled
     if !decorators.is_empty() && !enable_decorators {
@@ -256,11 +256,11 @@ where
 fn check_decorator_expression<F>(
     expr: &mut DecoratorExpression,
     interner: &StringInterner,
-    symbol_table: &SymbolTable,
+    symbol_table: &SymbolTable<'arena>,
     infer_expression_type: &mut F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression) -> Result<Type, TypeCheckError>,
+    F: FnMut(&mut Expression<'arena>) -> Result<Type, TypeCheckError>,
 {
     match expr {
         DecoratorExpression::Identifier(name) => {
@@ -320,17 +320,17 @@ where
 /// Returns `Ok(())` if the override is valid, or an error if validation fails.
 #[allow(clippy::too_many_arguments)]
 pub fn check_method_override<F>(
-    method: &MethodDeclaration,
+    method: &MethodDeclaration<'arena>,
     class_name: &str,
     parent_name: Option<&String>,
-    parent_type_params: Option<&Vec<TypeParameter>>,
-    extends_type_args: Option<&Vec<Type>>,
+    parent_type_params: Option<&Vec<TypeParameter<'arena>>>,
+    extends_type_args: Option<&Vec<Type<'arena>>>,
     access_control: &AccessControl,
     interner: &StringInterner,
     mut deep_resolve_type: F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&Type) -> Type,
+    F: FnMut(&Type<'arena>) -> Type<'arena>,
 {
     // Check if class has a parent
     let parent_name = parent_name.ok_or_else(|| {
@@ -563,9 +563,9 @@ pub fn has_circular_inheritance(
 /// # Returns
 ///
 /// Returns `Ok(())` if the class properly implements the interface, or an error if validation fails.
-pub fn check_class_implements_interface(
-    class_decl: &ClassDeclaration,
-    interface: &Type,
+pub fn check_class_implements_interface<'arena>(
+    class_decl: &ClassDeclaration<'arena>,
+    interface: &Type<'arena>,
     type_env: &crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
@@ -718,9 +718,9 @@ pub fn check_class_implements_interface(
 /// # Returns
 ///
 /// Returns `true` if source type implements target interface, `false` otherwise.
-pub fn check_implements_assignable(
-    source: &Type,
-    target: &Type,
+pub fn check_implements_assignable<'arena>(
+    source: &Type<'arena>,
+    target: &Type<'arena>,
     type_env: &crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> bool {

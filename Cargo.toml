@@ -9,6 +9,7 @@ license = "MIT"
 
 [dependencies]
 typedlua-parser = { git = "https://github.com/forge18/typedlua-parser.git" }
+bumpalo = "3.16"
 rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"

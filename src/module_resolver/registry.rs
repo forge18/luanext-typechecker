@@ -2,7 +2,8 @@ use super::error::{ModuleError, ModuleId};
 use crate::{Symbol, SymbolKind, SymbolTable};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
+
+
 use std::sync::{Arc, RwLock};
 
 /// Status of a module in the compilation pipeline
@@ -20,16 +21,17 @@ pub enum ModuleStatus {
 ///
 /// Note: AST is not stored here - it flows through CheckedModule in the CLI.
 /// The registry only stores what's needed for cross-module type resolution.
+/// Uses `'static` lifetimes since registry data outlives any single arena.
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
     pub id: ModuleId,
     pub exports: ModuleExports,
-    pub symbol_table: Arc<SymbolTable>,
+    pub symbol_table: Arc<SymbolTable<'static>>,
     pub status: ModuleStatus,
 }
 
 /// Exports from a module
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct ModuleExports {
     /// Named exports: { foo, bar as baz }
     /// IndexMap for deterministic ordering in serialized output and LSP responses
@@ -61,15 +63,18 @@ impl ModuleExports {
 }
 
 /// A symbol exported from a module
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Uses `'static` because exported symbols are stored in the registry
+/// and must outlive any single arena allocation.
+#[derive(Debug, Clone)]
 pub struct ExportedSymbol {
-    pub symbol: Symbol,
+    pub symbol: Symbol<'static>,
     /// Whether this is a type-only export
     pub is_type_only: bool,
 }
 
 impl ExportedSymbol {
-    pub fn new(symbol: Symbol, is_type_only: bool) -> Self {
+    pub fn new(symbol: Symbol<'static>, is_type_only: bool) -> Self {
         Self {
             symbol,
             is_type_only,
@@ -106,7 +111,7 @@ impl ModuleRegistry {
         &self,
         id: ModuleId,
         exports: ModuleExports,
-        symbol_table: Arc<SymbolTable>,
+        symbol_table: Arc<SymbolTable<'static>>,
     ) {
         let module = CompiledModule {
             id: id.clone(),
@@ -118,7 +123,7 @@ impl ModuleRegistry {
     }
 
     /// Register a parsed module (before type checking)
-    pub fn register_parsed(&self, id: ModuleId, symbol_table: Arc<SymbolTable>) {
+    pub fn register_parsed(&self, id: ModuleId, symbol_table: Arc<SymbolTable<'static>>) {
         let module = CompiledModule {
             id: id.clone(),
             exports: ModuleExports::new(),
@@ -218,14 +223,14 @@ mod tests {
     use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
     use typedlua_parser::span::Span;
 
-    fn make_test_type() -> Type {
+    fn make_test_type() -> Type<'static> {
         Type::new(
             TypeKind::Primitive(PrimitiveType::Number),
             Span::new(0, 0, 0, 0),
         )
     }
 
-    fn make_test_symbol(name: &str) -> Symbol {
+    fn make_test_symbol(name: &str) -> Symbol<'static> {
         Symbol::new(
             name.to_string(),
             SymbolKind::Variable,

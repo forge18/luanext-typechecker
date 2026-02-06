@@ -10,6 +10,7 @@
 //! The phase focuses on DECLARING symbols (adding them to the symbol table) before
 //! full type checking occurs. This enables forward references and proper scope resolution.
 
+use bumpalo::Bump;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
 use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern};
@@ -47,10 +48,11 @@ use typedlua_parser::string_interner::StringInterner;
 ///
 /// Returns `Ok(())` if the function was successfully registered, or an error if
 /// validation fails or a symbol with the same name already exists in the current scope.
-pub fn register_function_signature(
-    decl: &FunctionDeclaration,
-    symbol_table: &mut SymbolTable,
+pub fn register_function_signature<'arena>(
+    decl: &FunctionDeclaration<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
+    arena: &'arena Bump,
 ) -> Result<(), TypeCheckError> {
     // Validate type predicate return types
     if let Some(return_type) = &decl.return_type {
@@ -77,15 +79,16 @@ pub fn register_function_signature(
     }
 
     // Create function type
+    let return_type = decl.return_type.clone().unwrap_or_else(|| {
+        Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span)
+    });
     let func_type =
         Type::new(
             TypeKind::Function(FunctionType {
-                type_parameters: decl.type_parameters.clone(),
-                parameters: decl.parameters.clone(),
-                return_type: Box::new(decl.return_type.clone().unwrap_or_else(|| {
-                    Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span)
-                })),
-                throws: decl.throws.clone(),
+                type_parameters: decl.type_parameters,
+                parameters: decl.parameters,
+                return_type: arena.alloc(return_type),
+                throws: decl.throws,
                 span: decl.span,
             }),
             decl.span,
@@ -125,13 +128,14 @@ pub fn register_function_signature(
 /// - `span`: Source location for error reporting
 /// - `symbol_table`: Mutable symbol table
 /// - `interner`: String interner for resolving names
-pub fn declare_pattern(
+pub fn declare_pattern<'arena>(
     pattern: &Pattern,
-    typ: Type,
+    typ: Type<'arena>,
     kind: SymbolKind,
     span: Span,
-    symbol_table: &mut SymbolTable,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
+    arena: &'arena Bump,
 ) -> Result<(), TypeCheckError> {
     match pattern {
         Pattern::Identifier(ident) => {
@@ -144,21 +148,22 @@ pub fn declare_pattern(
         Pattern::Array(array_pattern) => {
             // Extract element type from array type
             if let TypeKind::Array(elem_type) = &typ.kind {
-                for elem in &array_pattern.elements {
+                for elem in array_pattern.elements.iter() {
                     match elem {
                         ArrayPatternElement::Pattern(pat) => {
                             declare_pattern(
                                 pat,
-                                (**elem_type).clone(),
+                                (*elem_type).clone(),
                                 kind,
                                 span,
                                 symbol_table,
                                 interner,
+                                arena,
                             )?;
                         }
                         ArrayPatternElement::Rest(ident) => {
                             // Rest gets array type
-                            let array_type = Type::new(TypeKind::Array(elem_type.clone()), span);
+                            let array_type = Type::new(TypeKind::Array(elem_type), span);
                             let symbol = Symbol::new(
                                 interner.resolve(ident.node).to_string(),
                                 kind,
@@ -185,7 +190,7 @@ pub fn declare_pattern(
         Pattern::Object(obj_pattern) => {
             // Extract properties from object type
             if let TypeKind::Object(obj_type) = &typ.kind {
-                for prop_pattern in &obj_pattern.properties {
+                for prop_pattern in obj_pattern.properties.iter() {
                     // Find matching property in type
                     let prop_type = obj_type.members.iter().find_map(|member| {
                         if let ObjectTypeMember::Property(prop) = member {
@@ -217,6 +222,7 @@ pub fn declare_pattern(
                             span,
                             symbol_table,
                             interner,
+                            arena,
                         )?;
                     } else {
                         // Shorthand: { x } means { x: x }
@@ -247,7 +253,7 @@ pub fn declare_pattern(
             // For or-patterns, all alternatives bind the same variables
             // Declare from the first alternative
             if let Some(first) = or_pattern.alternatives.first() {
-                declare_pattern(first, typ, kind, span, symbol_table, interner)?;
+                declare_pattern(first, typ, kind, span, symbol_table, interner, arena)?;
             }
             Ok(())
         }
@@ -258,17 +264,18 @@ pub fn declare_pattern(
 ///
 /// Ambient function declarations (using `declare function`) don't have bodies.
 /// They just register the function signature for type checking purposes.
-pub fn register_declare_function(
-    func: &DeclareFunctionStatement,
-    symbol_table: &mut SymbolTable,
+pub fn register_declare_function<'arena>(
+    func: &DeclareFunctionStatement<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
+    arena: &'arena Bump,
 ) -> Result<(), TypeCheckError> {
     let func_type = Type::new(
         TypeKind::Function(FunctionType {
-            type_parameters: func.type_parameters.clone(),
-            parameters: func.parameters.clone(),
-            return_type: Box::new(func.return_type.clone()),
-            throws: func.throws.clone(),
+            type_parameters: func.type_parameters,
+            parameters: func.parameters,
+            return_type: arena.alloc(func.return_type.clone()),
+            throws: func.throws,
             span: func.span,
         }),
         func.span,
@@ -290,9 +297,9 @@ pub fn register_declare_function(
 ///
 /// Ambient constant declarations don't have initializers.
 /// They just register the constant name and type.
-pub fn register_declare_const(
-    const_decl: &DeclareConstStatement,
-    symbol_table: &mut SymbolTable,
+pub fn register_declare_const<'arena>(
+    const_decl: &DeclareConstStatement<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
     let symbol = Symbol::new(
@@ -311,10 +318,11 @@ pub fn register_declare_const(
 ///
 /// Namespace declarations create an object type containing all exported members.
 /// This allows `Namespace.member` access patterns.
-pub fn register_declare_namespace(
-    ns: &DeclareNamespaceStatement,
-    symbol_table: &mut SymbolTable,
+pub fn register_declare_namespace<'arena>(
+    ns: &DeclareNamespaceStatement<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
+    arena: &'arena Bump,
 ) -> Result<(), TypeCheckError> {
     // Create object type from namespace members
     let members: Vec<_> = ns
@@ -324,8 +332,8 @@ pub fn register_declare_namespace(
             Statement::DeclareFunction(func) if func.is_export => {
                 Some(ObjectTypeMember::Method(MethodSignature {
                     name: func.name.clone(),
-                    type_parameters: func.type_parameters.clone(),
-                    parameters: func.parameters.clone(),
+                    type_parameters: func.type_parameters,
+                    parameters: func.parameters,
                     return_type: func.return_type.clone(),
                     body: None,
                     span: func.span,
@@ -344,9 +352,10 @@ pub fn register_declare_namespace(
         })
         .collect();
 
+    let members_slice = arena.alloc_slice_fill_iter(members);
     let namespace_type = Type::new(
         TypeKind::Object(ObjectType {
-            members,
+            members: members_slice,
             span: ns.span,
         }),
         ns.span,

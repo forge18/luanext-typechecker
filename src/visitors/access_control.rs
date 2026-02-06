@@ -19,22 +19,22 @@ pub struct ClassMemberInfo {
 #[derive(Clone)]
 pub enum ClassMemberKind {
     Property {
-        type_annotation: Type,
+        type_annotation: Type<'arena>,
     },
     Method {
-        parameters: Vec<Parameter>,
+        parameters: Vec<Parameter<'arena>>,
         return_type: Option<Type>,
         is_abstract: bool,
     },
     Getter {
-        return_type: Type,
+        return_type: Type<'arena>,
     },
     Setter {
-        parameter_type: Type,
+        parameter_type: Type<'arena>,
     },
     Operator {
         operator: OperatorKind,
-        parameters: Vec<Parameter>,
+        parameters: Vec<Parameter<'arena>>,
         return_type: Option<Type>,
     },
 }

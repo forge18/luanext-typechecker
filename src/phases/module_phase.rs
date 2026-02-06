@@ -20,8 +20,8 @@ use crate::TypeCheckError;
 use std::path::PathBuf;
 use std::sync::Arc;
 use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::{ExportKind, ImportClause, ImportDeclaration, Statement};
-use typedlua_parser::ast::types::{ObjectTypeMember, PrimitiveType, Type, TypeKind};
+use typedlua_parser::ast::statement::{ExportKind, ImportClause<'arena>, ImportDeclaration<'arena>, Statement};
+use typedlua_parser::ast::types::{ObjectTypeMember, PrimitiveType, Type<'arena>, TypeKind};
 use typedlua_parser::ast::Program;
 use typedlua_parser::prelude::AccessModifier;
 use typedlua_parser::span::Span;
@@ -49,9 +49,9 @@ use typedlua_parser::string_interner::StringInterner;
 /// # Returns
 ///
 /// A `ModuleExports` structure containing all exports found in the program.
-pub fn extract_exports(
-    program: &Program,
-    symbol_table: &SymbolTable,
+pub fn extract_exports<'arena>(
+    program: &Program<'arena>,
+    symbol_table: &SymbolTable<'arena>,
     interner: &StringInterner,
     module_registry: Option<&std::sync::Arc<crate::module_resolver::ModuleRegistry>>,
     module_resolver: Option<&std::sync::Arc<crate::module_resolver::ModuleResolver>>,
@@ -103,7 +103,7 @@ pub fn extract_exports(
                 ExportKind::Default(_expr) => {
                     // For default exports, create a synthetic symbol
                     // Future: infer the type of the expression
-                    let default_symbol = Symbol {
+                    let default_symbol = Symbol<'arena> {
                         name: "default".to_string(),
                         typ: Type::new(
                             TypeKind::Primitive(PrimitiveType::Unknown),
@@ -124,9 +124,9 @@ pub fn extract_exports(
 }
 
 /// Helper: Extract exports from an inline export declaration
-fn extract_declaration_export(
-    decl: &Statement,
-    symbol_table: &SymbolTable,
+fn extract_declaration_export<'arena>(
+    decl: &Statement<'arena>,
+    symbol_table: &SymbolTable<'arena>,
     interner: &StringInterner,
     exports: &mut ModuleExports,
 ) {
@@ -214,10 +214,10 @@ fn handle_reexport(
 /// - `module_registry`, `module_resolver`, `current_module_id`: Optional module resolution components
 /// - `diagnostic_handler`: For reporting import resolution errors
 #[allow(clippy::too_many_arguments)]
-pub fn check_import_statement(
-    import: &ImportDeclaration,
-    symbol_table: &mut SymbolTable,
-    type_env: &mut TypeEnvironment,
+pub fn check_import_statement<'arena>(
+    import: &ImportDeclaration<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
     access_control: &mut AccessControl,
     interner: &StringInterner,
     module_dependencies: &mut Vec<PathBuf>,

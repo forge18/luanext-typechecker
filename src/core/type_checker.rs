@@ -24,10 +24,10 @@ use typedlua_parser::ast::Program;
 use typedlua_parser::span::Span;
 
 /// Type checker for TypedLua programs
-pub struct TypeChecker<'a> {
-    symbol_table: SymbolTable,
-    type_env: TypeEnvironment,
-    current_function_return_type: Option<Type>,
+pub struct TypeChecker<'a, 'arena> {
+    symbol_table: SymbolTable<'arena>,
+    type_env: TypeEnvironment<'arena>,
+    current_function_return_type: Option<Type<'arena>>,
     // Visitor pattern integration - Phase 6
     narrowing: TypeNarrower,
     access_control: AccessControl,
@@ -46,7 +46,7 @@ pub struct TypeChecker<'a> {
     /// Current namespace path for this module
     current_namespace: Option<Vec<String>>,
     /// Type parameters for each generic class (needed for override checking)
-    class_type_params: FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter>>,
+    class_type_params: FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>>,
     /// Track class inheritance for circular dependency detection
     class_parents: FxHashMap<String, String>,
     /// Track exported names to detect duplicates
@@ -54,11 +54,13 @@ pub struct TypeChecker<'a> {
     diagnostic_handler: Arc<dyn DiagnosticHandler>,
     interner: &'a typedlua_parser::string_interner::StringInterner,
     common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+    /// Arena allocator for type construction
+    arena: &'arena bumpalo::Bump,
     /// Type relation cache for subtype checking
     type_relation_cache: TypeRelationCache,
 }
 
-impl<'a> TypeChecker<'a> {
+impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Create a new TypeChecker without loading the standard library.
     ///
     /// This creates a lightweight type checker instance suitable for testing
@@ -70,10 +72,11 @@ impl<'a> TypeChecker<'a> {
     /// ```rust,ignore
     /// let checker = TypeChecker::new(handler, &interner, &common);
     /// ```
-    pub fn new(
+    pub fn new<'arena>(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
         interner: &'a typedlua_parser::string_interner::StringInterner,
         common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        arena: &'arena bumpalo::Bump,
     ) -> Self {
         Self {
             symbol_table: SymbolTable::new(),
@@ -94,6 +97,7 @@ impl<'a> TypeChecker<'a> {
             diagnostic_handler,
             interner,
             common,
+            arena,
             type_relation_cache: TypeRelationCache::new(),
         }
     }
@@ -115,10 +119,11 @@ impl<'a> TypeChecker<'a> {
     /// let container = DiContainer::new();
     /// let checker = TypeChecker::new_with_di(&container, &interner, &common);
     /// ```
-    pub fn new_with_di(
+    pub fn new_with_di<'arena>(
         container: &mut crate::DiContainer,
         interner: &'a typedlua_parser::string_interner::StringInterner,
         common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        arena: &'arena bumpalo::Bump,
     ) -> Self {
         let diagnostic_handler = container
             .resolve::<Arc<dyn DiagnosticHandler>>()
@@ -144,6 +149,7 @@ impl<'a> TypeChecker<'a> {
             diagnostic_handler,
             interner,
             common,
+            arena,
             type_relation_cache: TypeRelationCache::new(),
         }
     }
@@ -158,12 +164,13 @@ impl<'a> TypeChecker<'a> {
     /// ```rust,ignore
     /// let checker = TypeChecker::new_with_stdlib(handler, &interner, &common)?;
     /// ```
-    pub fn new_with_stdlib(
+    pub fn new_with_stdlib<'arena>(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
         interner: &'a typedlua_parser::string_interner::StringInterner,
         common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        arena: &'arena bumpalo::Bump,
     ) -> Result<Self, String> {
-        let mut checker = Self::new(diagnostic_handler, interner, common);
+        let mut checker = Self::new(diagnostic_handler, interner, common, arena);
         checker.load_stdlib()?;
         checker.register_minimal_stdlib();
         Ok(checker)
@@ -207,15 +214,16 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Create a TypeChecker with module support for multi-module compilation
-    pub fn new_with_module_support(
+    pub fn new_with_module_support<'arena>(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
         interner: &'a typedlua_parser::string_interner::StringInterner,
         common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        arena: &'arena bumpalo::Bump,
         registry: Arc<crate::module_resolver::ModuleRegistry>,
         module_id: crate::module_resolver::ModuleId,
         resolver: Arc<crate::module_resolver::ModuleResolver>,
     ) -> Self {
-        let mut checker = Self::new(diagnostic_handler, interner, common);
+        let mut checker = Self::new(diagnostic_handler, interner, common, arena);
         checker.module_registry = Some(registry);
         checker.current_module_id = Some(module_id);
         checker.module_resolver = Some(resolver);
@@ -230,7 +238,7 @@ impl<'a> TypeChecker<'a> {
         use crate::state::stdlib_loader;
 
         let programs =
-            stdlib_loader::parse_stdlib_files(self.options.target, self.interner, self.common)?;
+            stdlib_loader::parse_stdlib_files(self.options.target, self.interner, self.common, self.arena)?;
 
         for mut program in programs {
             for statement in &mut program.statements {
@@ -244,7 +252,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Type check a program
     #[instrument(skip(self, program))]
-    pub fn check_program(&mut self, program: &mut Program) -> Result<(), TypeCheckError> {
+    pub fn check_program(&mut self, program: &mut Program<'arena>) -> Result<(), TypeCheckError> {
         let span = span!(
             Level::INFO,
             "check_program",
@@ -295,9 +303,9 @@ impl<'a> TypeChecker<'a> {
 
     /// Register a function's signature in the symbol table without checking its body
     /// This is used during the first pass of check_program to enable function hoisting
-    fn register_function_signature(
+    fn register_function_signature<'arena>(
         &mut self,
-        decl: &FunctionDeclaration,
+        decl: &FunctionDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Delegate to declaration_phase
         phases::declaration_phase::register_function_signature(
@@ -309,7 +317,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Type check a statement
     #[instrument(skip(self, stmt), fields(stmt_type))]
-    fn check_statement(&mut self, stmt: &mut Statement) -> Result<(), TypeCheckError> {
+    fn check_statement(&mut self, stmt: &mut Statement<'arena>) -> Result<(), TypeCheckError> {
         let stmt_type = match stmt {
             Statement::Variable(_) => "Variable",
             Statement::Function(_) => "Function",
@@ -381,9 +389,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check variable declaration
-    fn check_variable_declaration(
+    fn check_variable_declaration<'arena>(
         &mut self,
-        decl: &mut VariableDeclaration,
+        decl: &mut VariableDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Infer the type of the initializer
         let init_type = self.infer_expression_type(&mut decl.initializer)?;
@@ -408,7 +416,7 @@ impl<'a> TypeChecker<'a> {
             ) {
                 // Fallback: check if source class implements the target interface.
                 // Use original init_type and type_ann (pre-evaluation) since evaluate_type
-                // resolves interface references to ObjectType, losing the interface name.
+                // resolves interface references to ObjectType<'arena>, losing the interface name.
                 if !self.check_implements_assignable(&init_type, type_ann) {
                     self.diagnostic_handler.error(
                         decl.span,
@@ -441,10 +449,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Declare symbols from a pattern
-    fn declare_pattern(
+    fn declare_pattern<'arena>(
         &mut self,
         pattern: &Pattern,
-        typ: Type,
+        typ: Type<'arena>,
         kind: SymbolKind,
         span: Span,
     ) -> Result<(), TypeCheckError> {
@@ -460,9 +468,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check function declaration
-    fn check_function_declaration(
+    fn check_function_declaration<'arena>(
         &mut self,
-        decl: &mut FunctionDeclaration,
+        decl: &mut FunctionDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // NOTE: Function signature is already registered in the symbol table during pass 1
         // (see register_function_signature method called from check_program)
@@ -578,7 +586,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check if statement
-    fn check_if_statement(&mut self, if_stmt: &mut IfStatement) -> Result<(), TypeCheckError> {
+    fn check_if_statement(&mut self, if_stmt: &mut IfStatement<'arena>) -> Result<(), TypeCheckError> {
         // Check condition
         self.infer_expression_type(&mut if_stmt.condition)?;
 
@@ -635,9 +643,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check while statement
-    fn check_while_statement(
+    fn check_while_statement<'arena>(
         &mut self,
-        while_stmt: &mut WhileStatement,
+        while_stmt: &mut WhileStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         self.infer_expression_type(&mut while_stmt.condition)?;
         self.check_block(&mut while_stmt.body)?;
@@ -645,7 +653,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check for statement
-    fn check_for_statement(&mut self, for_stmt: &mut ForStatement) -> Result<(), TypeCheckError> {
+    fn check_for_statement(&mut self, for_stmt: &mut ForStatement<'arena>) -> Result<(), TypeCheckError> {
         match for_stmt {
             ForStatement::Numeric(numeric) => {
                 self.symbol_table.enter_scope();
@@ -703,9 +711,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check repeat statement
-    fn check_repeat_statement(
+    fn check_repeat_statement<'arena>(
         &mut self,
-        repeat_stmt: &mut RepeatStatement,
+        repeat_stmt: &mut RepeatStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         self.symbol_table.enter_scope();
         self.check_block(&mut repeat_stmt.body)?;
@@ -715,9 +723,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check return statement
-    fn check_return_statement(
+    fn check_return_statement<'arena>(
         &mut self,
-        return_stmt: &mut ReturnStatement,
+        return_stmt: &mut ReturnStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         if !return_stmt.values.is_empty() {
             // Infer types for all return values
@@ -779,7 +787,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check block
-    fn check_block(&mut self, block: &mut Block) -> Result<(), TypeCheckError> {
+    fn check_block(&mut self, block: &mut Block<'arena>) -> Result<(), TypeCheckError> {
         self.symbol_table.enter_scope();
         let mut first_error: Option<TypeCheckError> = None;
         for stmt in &mut block.statements {
@@ -798,9 +806,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check interface declaration
-    fn check_interface_declaration(
+    fn check_interface_declaration<'arena>(
         &mut self,
-        iface: &mut InterfaceDeclaration,
+        iface: &mut InterfaceDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Delegate to declaration_checking_phase for interface registration and validation
         let (has_default_bodies, iface_type) =
@@ -851,7 +859,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check type alias
-    fn check_type_alias(&mut self, alias: &TypeAliasDeclaration) -> Result<(), TypeCheckError> {
+    fn check_type_alias(&mut self, alias: &TypeAliasDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // For non-generic aliases, evaluate the type before delegating
         let evaluated_type = if alias.type_parameters.is_none() {
             Some(
@@ -873,7 +881,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check export statement and register exported symbols
-    fn check_export_statement(&mut self, export: &ExportDeclaration) -> Result<(), TypeCheckError> {
+    fn check_export_statement(&mut self, export: &ExportDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Extract export names and check for duplicates
         match &export.kind {
             ExportKind::Declaration(decl) => {
@@ -968,7 +976,7 @@ impl<'a> TypeChecker<'a> {
 
                         // Create object type from interface members
                         let obj_type = Type::new(
-                            TypeKind::Object(ObjectType {
+                            TypeKind::Object(ObjectType<'arena> {
                                 members: iface
                                     .members
                                     .iter()
@@ -995,7 +1003,7 @@ impl<'a> TypeChecker<'a> {
                             .map_err(|e| TypeCheckError::new(e, iface.span))?;
 
                         // Also register in symbol table for export extraction
-                        let symbol = Symbol {
+                        let symbol = Symbol<'arena> {
                             name: iface_name,
                             typ: obj_type,
                             kind: SymbolKind::Interface,
@@ -1043,9 +1051,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check enum declaration
-    fn check_enum_declaration(
+    fn check_enum_declaration<'arena>(
         &mut self,
-        enum_decl: &mut EnumDeclaration,
+        enum_decl: &mut EnumDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Delegate to declaration_checking_phase for simple enums
         let is_rich_enum = phases::declaration_checking_phase::check_enum_declaration(
@@ -1064,9 +1072,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check rich enum declaration with fields, constructor, and methods
-    fn check_rich_enum_declaration(
+    fn check_rich_enum_declaration<'arena>(
         &mut self,
-        enum_decl: &mut EnumDeclaration,
+        enum_decl: &mut EnumDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Register enum types and members with phase function
         let enum_self_type = phases::declaration_checking_phase::check_rich_enum_declaration(
@@ -1109,7 +1117,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Resolve a type reference, handling utility types and generic type application
     #[instrument(skip(self, type_ref), fields(type_name))]
-    fn resolve_type_reference(&self, type_ref: &TypeReference) -> Result<Type, TypeCheckError> {
+    fn resolve_type_reference(&self, type_ref: &TypeReference<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         let name = self.interner.resolve(type_ref.name.node);
         span!(Level::DEBUG, "resolve_type_reference", type_name = %name);
 
@@ -1119,7 +1127,7 @@ impl<'a> TypeChecker<'a> {
         if let Some(type_args) = &type_ref.type_arguments {
             if TypeEnvironment::is_utility_type(&name) {
                 // Resolve type arguments first (they might be type references)
-                let resolved_args: Result<Vec<Type>, TypeCheckError> = type_args
+                let resolved_args: Result<Vec<Type<'arena>>, TypeCheckError> = type_args
                     .iter()
                     .map(|arg| {
                         self.evaluate_type(arg)
@@ -1158,9 +1166,9 @@ impl<'a> TypeChecker<'a> {
 
     /// Check class declaration
     #[instrument(skip(self, class_decl), fields(class_name))]
-    fn check_class_declaration(
+    fn check_class_declaration<'arena>(
         &mut self,
-        class_decl: &mut ClassDeclaration,
+        class_decl: &mut ClassDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         let class_name = self.interner.resolve(class_decl.name.node).to_string();
         span!(Level::INFO, "check_class_declaration", class_name);
@@ -1521,10 +1529,10 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check that a class properly implements an interface
-    fn check_class_implements_interface(
+    fn check_class_implements_interface<'arena>(
         &self,
-        class_decl: &ClassDeclaration,
-        interface: &Type,
+        class_decl: &ClassDeclaration<'arena>,
+        interface: &Type<'arena>,
     ) -> Result<(), TypeCheckError> {
         phases::validation_phase::check_class_implements_interface(
             class_decl,
@@ -1536,10 +1544,10 @@ impl<'a> TypeChecker<'a> {
 
     /// Validate that all class properties are compatible with interface index signature
     #[allow(dead_code)]
-    fn validate_index_signature(
+    fn validate_index_signature<'arena>(
         &self,
-        class_decl: &ClassDeclaration,
-        index_sig: &IndexSignature,
+        class_decl: &ClassDeclaration<'arena>,
+        index_sig: &IndexSignature<'arena>,
     ) -> Result<(), TypeCheckError> {
         phases::validation_phase::validate_index_signature(class_decl, index_sig, self.interner)
     }
@@ -1658,9 +1666,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check class property
-    fn check_class_property(
+    fn check_class_property<'arena>(
         &mut self,
-        prop: &mut PropertyDeclaration,
+        prop: &mut PropertyDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&mut prop.decorators)?;
@@ -1689,9 +1697,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check constructor
-    fn check_constructor(
+    fn check_constructor<'arena>(
         &mut self,
-        ctor: &mut ConstructorDeclaration,
+        ctor: &mut ConstructorDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         // Enter constructor scope
         self.symbol_table.enter_scope();
@@ -1758,7 +1766,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check class method
-    fn check_class_method(&mut self, method: &mut MethodDeclaration) -> Result<(), TypeCheckError> {
+    fn check_class_method(&mut self, method: &mut MethodDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&mut method.decorators)?;
 
@@ -1896,7 +1904,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check class getter
-    fn check_class_getter(&mut self, getter: &mut GetterDeclaration) -> Result<(), TypeCheckError> {
+    fn check_class_getter(&mut self, getter: &mut GetterDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&mut getter.decorators)?;
 
@@ -1946,7 +1954,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check class setter
-    fn check_class_setter(&mut self, setter: &mut SetterDeclaration) -> Result<(), TypeCheckError> {
+    fn check_class_setter(&mut self, setter: &mut SetterDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&mut setter.decorators)?;
 
@@ -2012,9 +2020,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check operator declaration
-    fn check_operator_declaration(
+    fn check_operator_declaration<'arena>(
         &mut self,
-        op: &mut OperatorDeclaration,
+        op: &mut OperatorDeclaration<'arena>,
     ) -> Result<(), TypeCheckError> {
         if op.operator == OperatorKind::NewIndex {
             if op.parameters.len() != 2 {
@@ -2128,7 +2136,7 @@ impl<'a> TypeChecker<'a> {
         Ok(())
     }
 
-    fn is_boolean_type(&self, typ: &Type) -> bool {
+    fn is_boolean_type(&self, typ: &Type<'arena>) -> bool {
         type_utilities::is_boolean_type(typ)
     }
 
@@ -2137,7 +2145,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check that an override method properly overrides a parent method
-    fn check_method_override(&self, method: &MethodDeclaration) -> Result<(), TypeCheckError> {
+    fn check_method_override(&self, method: &MethodDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Get current class context
         let class_ctx = self
             .access_control
@@ -2178,7 +2186,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Convert type to string for error messages
-    fn type_to_string(&self, typ: &Type) -> String {
+    fn type_to_string(&self, typ: &Type<'arena>) -> String {
         match &typ.kind {
             TypeKind::Primitive(prim) => format!("{:?}", prim).to_lowercase(),
             TypeKind::Reference(type_ref) => self.interner.resolve(type_ref.name.node).to_string(),
@@ -2196,7 +2204,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Infer the type of an expression
     /// Delegates to TypeInferrer visitor
-    fn infer_expression_type(&mut self, expr: &mut Expression) -> Result<Type, TypeCheckError> {
+    fn infer_expression_type(&mut self, expr: &mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         let mut inferrer = TypeInferrer::new(
             &mut self.symbol_table,
             &mut self.type_env,
@@ -2209,7 +2217,7 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Evaluate special type constructs (keyof, mapped types, conditional types, etc.)
-    fn evaluate_type(&self, typ: &Type) -> Result<Type, String> {
+    fn evaluate_type(&self, typ: &Type<'arena>) -> Result<Type<'arena>, String> {
         match &typ.kind {
             TypeKind::KeyOf(operand) => {
                 // First evaluate the operand recursively
@@ -2294,7 +2302,7 @@ impl<'a> TypeChecker<'a> {
     /// Unlike evaluate_type which only resolves top-level references,
     /// this recursively walks Object, Union, Nullable, Array, etc.
     /// and resolves any nested TypeKind::Reference nodes.
-    fn deep_resolve_type(&self, typ: &Type) -> Type {
+    fn deep_resolve_type(&self, typ: &Type<'arena>) -> Type<'arena> {
         match &typ.kind {
             TypeKind::Reference(type_ref) => {
                 match self.resolve_type_reference(type_ref) {
@@ -2312,12 +2320,12 @@ impl<'a> TypeChecker<'a> {
             }
             TypeKind::Object(obj_type) => {
                 use typedlua_parser::ast::types::ObjectTypeMember;
-                let resolved_members: Vec<ObjectTypeMember> = obj_type
+                let resolved_members: Vec<ObjectTypeMember<'arena>> = obj_type
                     .members
                     .iter()
                     .map(|member| match member {
                         ObjectTypeMember::Property(prop) => {
-                            ObjectTypeMember::Property(PropertySignature {
+                            ObjectTypeMember::Property(PropertySignature<'arena> {
                                 type_annotation: self.deep_resolve_type(&prop.type_annotation),
                                 ..prop.clone()
                             })
@@ -2334,7 +2342,7 @@ impl<'a> TypeChecker<'a> {
                 )
             }
             TypeKind::Union(members) => {
-                let resolved: Vec<Type> =
+                let resolved: Vec<Type<'arena>> =
                     members.iter().map(|m| self.deep_resolve_type(m)).collect();
                 Type::new(TypeKind::Union(resolved), typ.span)
             }
@@ -2347,7 +2355,7 @@ impl<'a> TypeChecker<'a> {
                 Type::new(TypeKind::Array(Box::new(resolved)), typ.span)
             }
             TypeKind::Tuple(elems) => {
-                let resolved: Vec<Type> = elems.iter().map(|e| self.deep_resolve_type(e)).collect();
+                let resolved: Vec<Type<'arena>> = elems.iter().map(|e| self.deep_resolve_type(e)).collect();
                 Type::new(TypeKind::Tuple(resolved), typ.span)
             }
             TypeKind::Function(func_type) => {
@@ -2381,7 +2389,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Check if source type is assignable to target type via implements relationship.
     /// For example, Box<number> is assignable to Storable<number> if Box implements Storable<T>.
-    fn check_implements_assignable(&self, source: &Type, target: &Type) -> bool {
+    fn check_implements_assignable(&self, source: &Type<'arena>, target: &Type<'arena>) -> bool {
         phases::validation_phase::check_implements_assignable(
             source,
             target,
@@ -2393,12 +2401,12 @@ impl<'a> TypeChecker<'a> {
     /// Substitute type parameter references in a type with actual type arguments.
     /// For a generic interface like Container<T>, given type_args [number],
     /// replaces references to T with number.
-    fn substitute_type_args_in_type(
+    fn substitute_type_args_in_type<'arena>(
         &self,
-        typ: &Type,
+        typ: &Type<'arena>,
         type_args: &[Type],
         interface_name: &str,
-    ) -> Type {
+    ) -> Type<'arena> {
         match &typ.kind {
             TypeKind::Reference(type_ref) => {
                 let ref_name = self.interner.resolve(type_ref.name.node).to_string();
@@ -2431,7 +2439,7 @@ impl<'a> TypeChecker<'a> {
                 Type::new(TypeKind::Nullable(Box::new(subst)), typ.span)
             }
             TypeKind::Union(members) => {
-                let subst: Vec<Type> = members
+                let subst: Vec<Type<'arena>> = members
                     .iter()
                     .map(|m| self.substitute_type_args_in_type(m, type_args, interface_name))
                     .collect();
@@ -2442,14 +2450,14 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Widen literal types to their base primitive types
-    fn widen_type(&self, typ: Type) -> Type {
+    fn widen_type(&self, typ: Type<'arena>) -> Type<'arena> {
         type_utilities::widen_type(typ)
     }
 
     /// Register a declare function statement in the global scope
-    fn register_declare_function(
+    fn register_declare_function<'arena>(
         &mut self,
-        func: &DeclareFunctionStatement,
+        func: &DeclareFunctionStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         phases::declaration_phase::register_declare_function(
             func,
@@ -2459,9 +2467,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Register a declare const statement in the global scope
-    fn register_declare_const(
+    fn register_declare_const<'arena>(
         &mut self,
-        const_decl: &DeclareConstStatement,
+        const_decl: &DeclareConstStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         phases::declaration_phase::register_declare_const(
             const_decl,
@@ -2471,9 +2479,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Register a declare namespace statement in the global scope
-    fn register_declare_namespace(
+    fn register_declare_namespace<'arena>(
         &mut self,
-        ns: &DeclareNamespaceStatement,
+        ns: &DeclareNamespaceStatement<'arena>,
     ) -> Result<(), TypeCheckError> {
         phases::declaration_phase::register_declare_namespace(
             ns,
@@ -2494,7 +2502,7 @@ impl<'a> TypeChecker<'a> {
 
         // Register string namespace
         let string_members = vec![
-            ObjectTypeMember::Method(MethodSignature {
+            ObjectTypeMember::Method(MethodSignature<'arena> {
                 name: Spanned::new(self.interner.intern("upper"), span),
                 type_parameters: None,
                 parameters: vec![Parameter {
@@ -2509,7 +2517,7 @@ impl<'a> TypeChecker<'a> {
                 body: None,
                 span,
             }),
-            ObjectTypeMember::Method(MethodSignature {
+            ObjectTypeMember::Method(MethodSignature<'arena> {
                 name: Spanned::new(self.interner.intern("lower"), span),
                 type_parameters: None,
                 parameters: vec![Parameter {
@@ -2527,7 +2535,7 @@ impl<'a> TypeChecker<'a> {
         ];
 
         let string_type = Type::new(
-            TypeKind::Object(ObjectType {
+            TypeKind::Object(ObjectType<'arena> {
                 members: string_members,
                 span,
             }),
@@ -2543,14 +2551,14 @@ impl<'a> TypeChecker<'a> {
 
         // Register math namespace
         let math_members = vec![
-            ObjectTypeMember::Property(PropertySignature {
+            ObjectTypeMember::Property(PropertySignature<'arena> {
                 is_readonly: true,
                 name: Spanned::new(self.interner.intern("pi"), span),
                 is_optional: false,
                 type_annotation: self.type_env.get_number_type(span),
                 span,
             }),
-            ObjectTypeMember::Method(MethodSignature {
+            ObjectTypeMember::Method(MethodSignature<'arena> {
                 name: Spanned::new(self.interner.intern("abs"), span),
                 type_parameters: None,
                 parameters: vec![Parameter {
@@ -2568,7 +2576,7 @@ impl<'a> TypeChecker<'a> {
         ];
 
         let math_type = Type::new(
-            TypeKind::Object(ObjectType {
+            TypeKind::Object(ObjectType<'arena> {
                 members: math_members,
                 span,
             }),
@@ -2594,17 +2602,17 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Lookup a symbol by name in the current scope
-    pub fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {
+    pub fn lookup_symbol(&self, name: &str) -> Option<&Symbol<'arena>> {
         self.symbol_table.lookup(name)
     }
 
     /// Lookup a type by name
-    pub fn lookup_type(&self, name: &str) -> Option<&Type> {
+    pub fn lookup_type(&self, name: &str) -> Option<&Type<'arena>> {
         self.type_env.lookup_type(name)
     }
 
     /// Extract exports from a program for module system
-    pub fn extract_exports(&self, program: &Program) -> crate::module_resolver::ModuleExports {
+    pub fn extract_exports(&self, program: &Program<'arena>) -> crate::module_resolver::ModuleExports {
         // Delegate to module_phase for export extraction
         phases::module_phase::extract_exports(
             program,
@@ -2625,7 +2633,7 @@ impl<'a> TypeChecker<'a> {
         phases::inference_phase::check_rethrow_statement(&self.in_catch_block, span)
     }
 
-    fn check_import_statement(&mut self, import: &ImportDeclaration) -> Result<(), TypeCheckError> {
+    fn check_import_statement(&mut self, import: &ImportDeclaration<'arena>) -> Result<(), TypeCheckError> {
         // Delegate to module_phase for import processing
         phases::module_phase::check_import_statement(
             import,
@@ -2662,9 +2670,9 @@ impl<'a> TypeChecker<'a> {
     ///
     /// Result containing the type checking result or error
     #[instrument(skip(self, program, incremental_checker), fields(module_path = ?module_path))]
-    pub fn check_program_incremental(
+    pub fn check_program_incremental<'arena>(
         &mut self,
-        program: &mut Program,
+        program: &mut Program<'arena>,
         module_path: std::path::PathBuf,
         incremental_checker: Option<&mut crate::IncrementalChecker>,
     ) -> Result<(), TypeCheckError> {
@@ -2732,9 +2740,9 @@ impl<'a> TypeChecker<'a> {
     ///
     /// This method extracts all declarations (functions, classes, interfaces, etc.)
     /// and computes stable signature hashes for incremental type checking.
-    pub fn compute_declaration_hashes(
+    pub fn compute_declaration_hashes<'arena>(
         &self,
-        program: &Program,
+        program: &Program<'arena>,
         _module_path: std::path::PathBuf,
         interner: &typedlua_parser::string_interner::StringInterner,
     ) -> FxHashMap<String, u64> {
@@ -2895,13 +2903,13 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Check if a block always returns (has a return statement on all code paths)
-    fn block_always_returns(&self, block: &Block) -> bool {
+    fn block_always_returns(&self, block: &Block<'arena>) -> bool {
         control_flow::block_always_returns(block, self.interner)
     }
 
     /// Check if a statement always returns
     #[allow(dead_code)]
-    fn statement_always_returns(&self, stmt: &Statement) -> bool {
+    fn statement_always_returns(&self, stmt: &Statement<'arena>) -> bool {
         control_flow::statement_always_returns(stmt, self.interner)
     }
 }

@@ -122,14 +122,14 @@ fn hash_parameter_name(pattern: &Pattern, interner: &StringInterner, hasher: &mu
     }
 }
 
-impl DeclarationHash for FunctionDeclaration {
+impl<'arena> DeclarationHash for FunctionDeclaration<'arena> {
     fn compute_signature_hash(&self, interner: &StringInterner) -> u64 {
         let mut hasher = FxHasher::new();
         interner.resolve(self.name.node).hash(&mut hasher);
 
-        if let Some(type_params) = &self.type_parameters {
+        if let Some(type_params) = self.type_parameters {
             type_params.len().hash(&mut hasher);
-            for tp in type_params {
+            for tp in type_params.iter() {
                 interner.resolve(tp.name.node).hash(&mut hasher);
                 if let Some(constraint) = &tp.constraint {
                     hash_type(constraint, interner, &mut hasher);
@@ -138,7 +138,7 @@ impl DeclarationHash for FunctionDeclaration {
         }
 
         self.parameters.len().hash(&mut hasher);
-        for param in &self.parameters {
+        for param in self.parameters.iter() {
             hash_parameter_name(&param.pattern, interner, &mut hasher);
             if let Some(type_ann) = &param.type_annotation {
                 hash_type(type_ann, interner, &mut hasher);
@@ -150,9 +150,9 @@ impl DeclarationHash for FunctionDeclaration {
             hash_type(return_type, interner, &mut hasher);
         }
 
-        if let Some(throws) = &self.throws {
+        if let Some(throws) = self.throws {
             throws.len().hash(&mut hasher);
-            for throw_type in throws {
+            for throw_type in throws.iter() {
                 hash_type(throw_type, interner, &mut hasher);
             }
         }
@@ -161,14 +161,14 @@ impl DeclarationHash for FunctionDeclaration {
     }
 }
 
-impl DeclarationHash for ClassDeclaration {
+impl<'arena> DeclarationHash for ClassDeclaration<'arena> {
     fn compute_signature_hash(&self, interner: &StringInterner) -> u64 {
         let mut hasher = FxHasher::new();
         interner.resolve(self.name.node).hash(&mut hasher);
 
-        if let Some(type_params) = &self.type_parameters {
+        if let Some(type_params) = self.type_parameters {
             type_params.len().hash(&mut hasher);
-            for tp in type_params {
+            for tp in type_params.iter() {
                 interner.resolve(tp.name.node).hash(&mut hasher);
             }
         }
@@ -178,7 +178,7 @@ impl DeclarationHash for ClassDeclaration {
         }
 
         self.implements.len().hash(&mut hasher);
-        for impl_type in &self.implements {
+        for impl_type in self.implements.iter() {
             hash_type(impl_type, interner, &mut hasher);
         }
 
@@ -189,20 +189,20 @@ impl DeclarationHash for ClassDeclaration {
     }
 }
 
-impl DeclarationHash for InterfaceDeclaration {
+impl<'arena> DeclarationHash for InterfaceDeclaration<'arena> {
     fn compute_signature_hash(&self, interner: &StringInterner) -> u64 {
         let mut hasher = FxHasher::new();
         interner.resolve(self.name.node).hash(&mut hasher);
 
-        if let Some(type_params) = &self.type_parameters {
+        if let Some(type_params) = self.type_parameters {
             type_params.len().hash(&mut hasher);
-            for tp in type_params {
+            for tp in type_params.iter() {
                 interner.resolve(tp.name.node).hash(&mut hasher);
             }
         }
 
         self.extends.len().hash(&mut hasher);
-        for extends_type in &self.extends {
+        for extends_type in self.extends.iter() {
             hash_type(extends_type, interner, &mut hasher);
         }
 
@@ -212,14 +212,14 @@ impl DeclarationHash for InterfaceDeclaration {
     }
 }
 
-impl DeclarationHash for TypeAliasDeclaration {
+impl<'arena> DeclarationHash for TypeAliasDeclaration<'arena> {
     fn compute_signature_hash(&self, interner: &StringInterner) -> u64 {
         let mut hasher = FxHasher::new();
         interner.resolve(self.name.node).hash(&mut hasher);
 
-        if let Some(type_params) = &self.type_parameters {
+        if let Some(type_params) = self.type_parameters {
             type_params.len().hash(&mut hasher);
-            for tp in type_params {
+            for tp in type_params.iter() {
                 interner.resolve(tp.name.node).hash(&mut hasher);
             }
         }
@@ -230,13 +230,13 @@ impl DeclarationHash for TypeAliasDeclaration {
     }
 }
 
-impl DeclarationHash for EnumDeclaration {
+impl<'arena> DeclarationHash for EnumDeclaration<'arena> {
     fn compute_signature_hash(&self, interner: &StringInterner) -> u64 {
         let mut hasher = FxHasher::new();
         interner.resolve(self.name.node).hash(&mut hasher);
 
         self.members.len().hash(&mut hasher);
-        for member in &self.members {
+        for member in self.members.iter() {
             interner.resolve(member.name.node).hash(&mut hasher);
             if let Some(value) = &member.value {
                 match value {
@@ -250,7 +250,7 @@ impl DeclarationHash for EnumDeclaration {
     }
 }
 
-fn hash_type(typ: &Type, interner: &StringInterner, hasher: &mut FxHasher) {
+fn hash_type(typ: &Type<'_>, interner: &StringInterner, hasher: &mut FxHasher) {
     match &typ.kind {
         TypeKind::Primitive(primitive) => {
             0u8.hash(hasher);
@@ -289,14 +289,14 @@ fn hash_type(typ: &Type, interner: &StringInterner, hasher: &mut FxHasher) {
     }
 }
 
-fn hash_function_type(func: &FunctionType, interner: &StringInterner, hasher: &mut FxHasher) {
-    if let Some(type_params) = &func.type_parameters {
+fn hash_function_type(func: &FunctionType<'_>, interner: &StringInterner, hasher: &mut FxHasher) {
+    if let Some(type_params) = func.type_parameters {
         type_params.len().hash(hasher);
     }
 
     func.parameters.len().hash(hasher);
 
-    hash_type(&func.return_type, interner, hasher);
+    hash_type(func.return_type, interner, hasher);
 }
 
 #[derive(Debug, Clone)]
@@ -377,13 +377,13 @@ impl IncrementalChecker {
 
     pub fn compute_declaration_hashes(
         &self,
-        program: &typedlua_parser::ast::Program,
+        program: &typedlua_parser::ast::Program<'_>,
         module_path: PathBuf,
         interner: &StringInterner,
     ) -> FxHashMap<DeclarationId, u64> {
         let mut hashes = FxHashMap::default();
 
-        for statement in &program.statements {
+        for statement in program.statements.iter() {
             match statement {
                 Statement::Function(func) => {
                     let name = interner.resolve(func.name.node).to_string();

@@ -8,6 +8,7 @@
 
 #![allow(dead_code)] // Functions will be used during type_checker.rs refactoring
 
+use bumpalo::Bump;
 use typedlua_parser::ast::expression::*;
 use typedlua_parser::ast::statement::*;
 use typedlua_parser::ast::types::*;
@@ -28,7 +29,7 @@ use typedlua_parser::span::Span;
 /// // nil → nil
 /// // number → number (unchanged)
 /// ```
-pub fn widen_type(typ: Type) -> Type {
+pub fn widen_type<'arena>(typ: Type<'arena>) -> Type<'arena> {
     match typ.kind {
         TypeKind::Literal(Literal::Number(_)) | TypeKind::Literal(Literal::Integer(_)) => {
             Type::new(TypeKind::Primitive(PrimitiveType::Number), typ.span)
@@ -147,18 +148,18 @@ pub fn type_to_string(typ: &Type) -> String {
 ///    - If `never` is present, returns just `never`
 ///    - Removes types that are covered by broader types
 ///    - Flattens nested unions
-pub fn canonicalize_union(types: Vec<Type>, span: Span) -> Type {
+pub fn canonicalize_union<'arena>(types: Vec<Type<'arena>>, span: Span, arena: &'arena Bump) -> Type<'arena> {
     if types.is_empty() {
         return Type::new(TypeKind::Primitive(PrimitiveType::Never), span);
     }
 
-    let mut unique_types: Vec<Type> = Vec::new();
+    let mut unique_types: Vec<Type<'arena>> = Vec::new();
     let mut has_never = false;
 
     for typ in types {
         match &typ.kind {
             TypeKind::Union(inner_types) => {
-                for inner in inner_types {
+                for inner in inner_types.iter() {
                     add_type_to_union(&mut unique_types, inner.clone(), &mut has_never);
                 }
             }
@@ -174,7 +175,7 @@ pub fn canonicalize_union(types: Vec<Type>, span: Span) -> Type {
 
     unique_types.sort_by_key(type_to_string);
 
-    let mut deduped: Vec<Type> = Vec::new();
+    let mut deduped: Vec<Type<'arena>> = Vec::new();
     let mut prev: Option<String> = None;
     for typ in unique_types {
         let s = type_to_string(&typ);
@@ -188,10 +189,11 @@ pub fn canonicalize_union(types: Vec<Type>, span: Span) -> Type {
         return deduped[0].clone();
     }
 
-    Type::new(TypeKind::Union(deduped), span)
+    let slice = arena.alloc_slice_fill_iter(deduped);
+    Type::new(TypeKind::Union(slice), span)
 }
 
-fn add_type_to_union(union: &mut Vec<Type>, typ: Type, has_never: &mut bool) {
+fn add_type_to_union<'arena>(union: &mut Vec<Type<'arena>>, typ: Type<'arena>, has_never: &mut bool) {
     if let TypeKind::Primitive(PrimitiveType::Never) = typ.kind {
         *has_never = true;
         return;
@@ -208,7 +210,7 @@ mod tests {
     use super::*;
     use typedlua_parser::span::Span;
 
-    fn make_type(kind: TypeKind) -> Type {
+    fn make_type<'arena>(kind: TypeKind<'arena>) -> Type<'arena> {
         Type::new(kind, Span::default())
     }
 
@@ -292,34 +294,40 @@ mod tests {
 
     #[test]
     fn test_type_to_string_array() {
+        let arena = Bump::new();
         let number_type = make_type(TypeKind::Primitive(PrimitiveType::Number));
-        let array_type = make_type(TypeKind::Array(Box::new(number_type)));
+        let array_type = make_type(TypeKind::Array(arena.alloc(number_type)));
         assert_eq!(type_to_string(&array_type), "number[]");
     }
 
     #[test]
     fn test_type_to_string_union() {
+        let arena = Bump::new();
         let number_type = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string_type = make_type(TypeKind::Primitive(PrimitiveType::String));
-        let union_type = make_type(TypeKind::Union(vec![number_type, string_type]));
+        let types = arena.alloc_slice_fill_iter(vec![number_type, string_type]);
+        let union_type = make_type(TypeKind::Union(types));
         assert_eq!(type_to_string(&union_type), "number | string");
     }
 
     #[test]
     fn test_canonicalize_union_removes_duplicates() {
+        let arena = Bump::new();
         let number_type = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let union = canonicalize_union(
             vec![number_type.clone(), number_type.clone()],
             Span::default(),
+            &arena,
         );
         assert_eq!(type_to_string(&union), "number");
     }
 
     #[test]
     fn test_canonicalize_union_handles_never() {
+        let arena = Bump::new();
         let number_type = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let never_type = make_type(TypeKind::Primitive(PrimitiveType::Never));
-        let union = canonicalize_union(vec![number_type, never_type], Span::default());
+        let union = canonicalize_union(vec![number_type, never_type], Span::default(), &arena);
         assert!(matches!(
             union.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -328,6 +336,7 @@ mod tests {
 
     #[test]
     fn test_canonicalize_union_sorts_types() {
+        let arena = Bump::new();
         let string_type = make_type(TypeKind::Primitive(PrimitiveType::String));
         let number_type = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let boolean_type = make_type(TypeKind::Primitive(PrimitiveType::Boolean));
@@ -338,6 +347,7 @@ mod tests {
                 boolean_type.clone(),
             ],
             Span::default(),
+            &arena,
         );
         if let TypeKind::Union(types) = union.kind {
             assert_eq!(types.len(), 3);

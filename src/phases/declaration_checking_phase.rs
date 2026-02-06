@@ -18,11 +18,11 @@ use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, Clas
 use crate::TypeCheckError;
 use typedlua_parser::ast::expression::Literal;
 use typedlua_parser::ast::statement::{
-    AccessModifier, ClassDeclaration, ClassMember, EnumDeclaration, InterfaceDeclaration,
-    InterfaceMember, TypeAliasDeclaration,
+    AccessModifier, ClassDeclaration<'arena>, ClassMember<'arena>, EnumDeclaration<'arena>, InterfaceDeclaration<'arena>,
+    InterfaceMember<'arena>, TypeAliasDeclaration<'arena>,
 };
 use typedlua_parser::ast::types::{
-    ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind, TypeReference,
+    ObjectType<'arena>, ObjectTypeMember<'arena>, PrimitiveType, Type<'arena>, TypeKind, TypeReference<'arena>,
 };
 use typedlua_parser::prelude::EnumValue;
 use typedlua_parser::string_interner::StringInterner;
@@ -44,10 +44,10 @@ use typedlua_parser::string_interner::StringInterner;
 /// # Returns
 ///
 /// Returns `Ok(())` if successful, or an error if registration fails.
-pub fn check_type_alias(
-    alias: &TypeAliasDeclaration,
-    type_env: &mut TypeEnvironment,
-    symbol_table: &mut SymbolTable,
+pub fn check_type_alias<'arena>(
+    alias: &TypeAliasDeclaration<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
     evaluated_type: Option<Type>,
 ) -> Result<(), TypeCheckError> {
@@ -82,7 +82,7 @@ pub fn check_type_alias(
     let typ_to_register = alias.type_annotation.clone();
 
     // Also register in symbol table for export extraction
-    let symbol = Symbol {
+    let symbol = Symbol<'arena> {
         name: alias_name.clone(),
         typ: typ_to_register,
         kind: SymbolKind::TypeAlias,
@@ -112,17 +112,17 @@ pub fn check_type_alias(
 ///
 /// Returns `Ok(true)` if this is a rich enum that needs further checking by the caller,
 /// `Ok(false)` if it's a simple enum that was fully handled, or an error if checking fails.
-pub fn check_enum_declaration(
-    enum_decl: &EnumDeclaration,
-    type_env: &mut TypeEnvironment,
-    symbol_table: &mut SymbolTable,
+pub fn check_enum_declaration<'arena>(
+    enum_decl: &EnumDeclaration<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
 ) -> Result<bool, TypeCheckError> {
     let enum_name = interner.resolve(enum_decl.name.node).to_string();
 
     // Register enum name as a symbol so it can be referenced as a value
     let enum_ref_type = Type::new(
-        TypeKind::Reference(TypeReference {
+        TypeKind::Reference(TypeReference<'arena> {
             name: enum_decl.name.clone(),
             type_arguments: None,
             span: enum_decl.span,
@@ -203,13 +203,13 @@ pub fn check_enum_declaration(
 /// - `interface_type`: The constructed interface type for use in body checking
 ///
 /// Returns an error if validation or registration fails.
-pub fn check_interface_declaration(
-    iface: &InterfaceDeclaration,
-    type_env: &mut TypeEnvironment,
-    symbol_table: &mut SymbolTable,
+pub fn check_interface_declaration<'arena>(
+    iface: &InterfaceDeclaration<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
+    symbol_table: &mut SymbolTable<'arena>,
     access_control: &mut AccessControl,
     interner: &StringInterner,
-) -> Result<(bool, Type), TypeCheckError> {
+) -> Result<(bool, Type<'arena>), TypeCheckError> {
     let iface_name = interner.resolve(iface.name.node).to_string();
 
     // Register interface with access control
@@ -254,7 +254,7 @@ pub fn check_interface_declaration(
 
         // Create placeholder object type with interface members
         let obj_type = Type::new(
-            TypeKind::Object(ObjectType {
+            TypeKind::Object(ObjectType<'arena> {
                 members: iface
                     .members
                     .iter()
@@ -274,7 +274,7 @@ pub fn check_interface_declaration(
             .map_err(|e| TypeCheckError::new(e, iface.span))?;
 
         // Register in symbol table
-        let symbol = Symbol {
+        let symbol = Symbol<'arena> {
             name: iface_name,
             typ: obj_type.clone(),
             kind: SymbolKind::Interface,
@@ -289,7 +289,7 @@ pub fn check_interface_declaration(
     }
 
     // Non-generic interface - full checking with inheritance
-    let mut members: Vec<ObjectTypeMember> = iface
+    let mut members: Vec<ObjectTypeMember<'arena>> = iface
         .members
         .iter()
         .map(|member| match member {
@@ -350,7 +350,7 @@ pub fn check_interface_declaration(
 
     // Create the interface type
     let iface_type = Type::new(
-        TypeKind::Object(ObjectType {
+        TypeKind::Object(ObjectType<'arena> {
             members: members.clone(),
             span: iface.span,
         }),
@@ -366,7 +366,7 @@ pub fn check_interface_declaration(
         .map_err(|e| TypeCheckError::new(e, iface.span))?;
 
     // Register in symbol table
-    let symbol = Symbol {
+    let symbol = Symbol<'arena> {
         name: iface_name,
         typ: iface_type.clone(),
         kind: SymbolKind::Interface,
@@ -406,9 +406,9 @@ pub fn check_interface_declaration(
 /// Returns `Ok(enum_self_type)` with the enum's type for body checking, or an error if
 /// registration or validation fails. The caller should use this type to check constructor
 /// and method bodies.
-pub fn check_rich_enum_declaration(
-    enum_decl: &EnumDeclaration,
-    type_env: &mut TypeEnvironment,
+pub fn check_rich_enum_declaration<'arena>(
+    enum_decl: &EnumDeclaration<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
     access_control: &mut AccessControl,
     interner: &StringInterner,
 ) -> Result<Type, TypeCheckError> {
@@ -481,7 +481,7 @@ pub fn check_rich_enum_declaration(
     }
 
     let enum_type = Type::new(
-        TypeKind::Reference(TypeReference {
+        TypeKind::Reference(TypeReference<'arena> {
             name: enum_decl.name.clone(),
             type_arguments: None,
             span: enum_decl.span,
@@ -504,10 +504,10 @@ pub fn check_rich_enum_declaration(
 /// # Returns
 ///
 /// Returns the class type for use in further checking.
-pub fn register_class_symbol(
+pub fn register_class_symbol<'arena>(
     class_decl: &typedlua_parser::ast::statement::ClassDeclaration,
-    symbol_table: &mut SymbolTable,
-    type_env: &mut TypeEnvironment,
+    symbol_table: &mut SymbolTable<'arena>,
+    type_env: &mut TypeEnvironment<'arena>,
     class_type_params: &mut rustc_hash::FxHashMap<
         String,
         Vec<typedlua_parser::ast::statement::TypeParameter>,
@@ -518,7 +518,7 @@ pub fn register_class_symbol(
 
     // Register the class name as a symbol in the symbol table so `new ClassName()` works
     let class_type = Type::new(
-        TypeKind::Reference(TypeReference {
+        TypeKind::Reference(TypeReference<'arena> {
             name: class_decl.name.clone(),
             type_arguments: None,
             span: class_decl.span,
@@ -562,8 +562,8 @@ pub fn register_class_symbol(
 /// Returns a vector of ClassMemberInfo structures ready for access control registration.
 /// Note: Primary constructor properties must be added separately by the caller since
 /// they require special handling for `is_readonly` field mapping.
-pub fn extract_class_member_infos(
-    class_decl: &ClassDeclaration,
+pub fn extract_class_member_infos<'arena>(
+    class_decl: &ClassDeclaration<'arena>,
     interner: &StringInterner,
 ) -> Vec<ClassMemberInfo> {
     use crate::helpers::type_utilities::operator_kind_name;
@@ -698,7 +698,7 @@ pub fn register_class_type_parameters(
         for type_param in type_params {
             let param_name = interner.resolve(type_param.name.node).to_string();
             let param_type = Type::new(
-                TypeKind::Reference(TypeReference {
+                TypeKind::Reference(TypeReference<'arena> {
                     name: type_param.name.clone(),
                     type_arguments: None,
                     span: type_param.span,
@@ -730,9 +730,9 @@ pub fn register_class_type_parameters(
 /// - `type_env`: Mutable type environment for registration
 /// - `access_control`: Mutable access control for member lookup
 /// - `interner`: String interner for resolving interface names
-pub fn register_class_implements(
+pub fn register_class_implements<'arena>(
     class_name: String,
-    implements: Vec<Type>,
+    implements: Vec<Type<'arena>>,
     type_env: &mut crate::core::type_environment::TypeEnvironment,
     access_control: &mut crate::visitors::AccessControl,
     interner: &StringInterner,
@@ -798,7 +798,7 @@ pub fn register_function_type_parameters(
     for type_param in type_params {
         let param_name = interner.resolve(type_param.name.node).to_string();
         let param_type = Type::new(
-            TypeKind::Reference(TypeReference {
+            TypeKind::Reference(TypeReference<'arena> {
                 name: type_param.name.clone(),
                 type_arguments: None,
                 span: type_param.span,
@@ -841,13 +841,13 @@ pub fn register_function_type_parameters(
 ///
 /// Returns the instantiated interface type with all type parameters replaced.
 pub fn instantiate_generic_interface<F>(
-    interface: Type,
-    type_args: &Vec<Type>,
+    interface: Type<'arena>,
+    type_args: &Vec<Type<'arena>>,
     interface_name: &str,
     substitute_fn: F,
 ) -> Type
 where
-    F: Fn(&Type, &Vec<Type>, &str) -> Type,
+    F: Fn(&Type<'arena>, &Vec<Type<'arena>>, &str) -> Type<'arena>,
 {
     let mut instantiated_iface = interface.clone();
     if let TypeKind::Object(ref mut obj) = instantiated_iface.kind {

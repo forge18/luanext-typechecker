@@ -196,7 +196,7 @@ impl<'arena> Default for SymbolTable<'arena> {
 }
 
 /// Serializable representation of a symbol with scope depth
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SerializableSymbol {
     pub name: String,
     pub kind: SymbolKind,
@@ -208,103 +208,14 @@ pub struct SerializableSymbol {
 }
 
 /// Serializable representation of SymbolTable (flattened scopes)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SerializableSymbolTable {
     pub symbols: Vec<SerializableSymbol>,
 }
 
-impl<'arena> SymbolTable<'arena> {
-    /// Convert to serializable format by flattening scope hierarchy
-    pub fn to_serializable(&self) -> SerializableSymbolTable {
-        let mut symbols = Vec::new();
-
-        // Scope stack: depth 0 = oldest (bottom of stack), increasing depth
-        for (depth, scope) in self.scope_stack.iter().enumerate() {
-            for symbol in scope.symbols.values() {
-                symbols.push(SerializableSymbol {
-                    name: symbol.name.clone(),
-                    kind: symbol.kind,
-                    typ: symbol.typ.clone(),
-                    span: symbol.span,
-                    is_exported: symbol.is_exported,
-                    references: symbol.references.clone(),
-                    scope_depth: depth,
-                });
-            }
-        }
-
-        // Current scope is the deepest
-        let current_depth = self.scope_stack.len();
-        for symbol in self.current_scope.symbols.values() {
-            symbols.push(SerializableSymbol {
-                name: symbol.name.clone(),
-                kind: symbol.kind,
-                typ: symbol.typ.clone(),
-                span: symbol.span,
-                is_exported: symbol.is_exported,
-                references: symbol.references.clone(),
-                scope_depth: current_depth,
-            });
-        }
-
-        SerializableSymbolTable { symbols }
-    }
-
-    /// Reconstruct from serializable format
-    pub fn from_serializable(data: SerializableSymbolTable) -> Self {
-        // Group symbols by scope depth
-        let mut symbols_by_depth: FxHashMap<usize, Vec<SerializableSymbol>> = FxHashMap::default();
-        for symbol in data.symbols {
-            symbols_by_depth
-                .entry(symbol.scope_depth)
-                .or_default()
-                .push(symbol);
-        }
-
-        let max_depth = symbols_by_depth.keys().max().copied().unwrap_or(0);
-
-        // Build scope stack from depth 0 to max_depth-1, current_scope = max_depth
-        let mut scope_stack = Vec::new();
-        for depth in 0..max_depth {
-            let mut scope = Scope::new();
-            if let Some(symbols) = symbols_by_depth.get(&depth) {
-                for serializable in symbols {
-                    let symbol = Symbol {
-                        name: serializable.name.clone(),
-                        kind: serializable.kind,
-                        typ: serializable.typ.clone(),
-                        span: serializable.span,
-                        is_exported: serializable.is_exported,
-                        references: serializable.references.clone(),
-                    };
-                    scope.symbols.insert(symbol.name.clone(), symbol);
-                }
-            }
-            scope_stack.push(scope);
-        }
-
-        // Current scope is the deepest level
-        let mut current_scope = Scope::new();
-        if let Some(symbols) = symbols_by_depth.get(&max_depth) {
-            for serializable in symbols {
-                let symbol = Symbol {
-                    name: serializable.name.clone(),
-                    kind: serializable.kind,
-                    typ: serializable.typ.clone(),
-                    span: serializable.span,
-                    is_exported: serializable.is_exported,
-                    references: serializable.references.clone(),
-                };
-                current_scope.symbols.insert(symbol.name.clone(), symbol);
-            }
-        }
-
-        SymbolTable {
-            current_scope,
-            scope_stack,
-        }
-    }
-}
+// NOTE: to_serializable/from_serializable removed during arena migration.
+// Arena-allocated types (Type<'arena>) cannot be converted to 'static.
+// A proper serialization strategy will be needed for caching.
 
 #[cfg(test)]
 mod tests {

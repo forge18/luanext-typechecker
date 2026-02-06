@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use typedlua_parser::ast::expression::Literal;
 use typedlua_parser::ast::statement::{IndexKeyType, PropertySignature};
 use typedlua_parser::ast::types::{
-    MappedType, MappedTypeModifier, ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind,
+    MappedType, MappedTypeModifier, ObjectType<'arena>, ObjectTypeMember<'arena>, PrimitiveType, Type<'arena>, TypeKind,
 };
 use typedlua_parser::ast::Ident;
 use typedlua_parser::span::Span;
@@ -53,7 +53,7 @@ fn partial(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .map(|member| {
                     match member {
                         ObjectTypeMember::Property(prop) => {
-                            ObjectTypeMember::Property(PropertySignature {
+                            ObjectTypeMember::Property(PropertySignature<'arena> {
                                 is_readonly: prop.is_readonly,
                                 name: prop.name.clone(),
                                 is_optional: true, // Make optional
@@ -68,7 +68,7 @@ fn partial(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Object(ObjectType {
+                TypeKind::Object(ObjectType<'arena> {
                     members: new_members,
                     span,
                 }),
@@ -97,7 +97,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .map(|member| {
                     match member {
                         ObjectTypeMember::Property(prop) => {
-                            ObjectTypeMember::Property(PropertySignature {
+                            ObjectTypeMember::Property(PropertySignature<'arena> {
                                 is_readonly: prop.is_readonly,
                                 name: prop.name.clone(),
                                 is_optional: false, // Make required
@@ -111,7 +111,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Object(ObjectType {
+                TypeKind::Object(ObjectType<'arena> {
                     members: new_members,
                     span,
                 }),
@@ -140,7 +140,7 @@ fn readonly(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .map(|member| {
                     match member {
                         ObjectTypeMember::Property(prop) => {
-                            ObjectTypeMember::Property(PropertySignature {
+                            ObjectTypeMember::Property(PropertySignature<'arena> {
                                 is_readonly: true, // Make readonly
                                 name: prop.name.clone(),
                                 is_optional: prop.is_optional,
@@ -154,7 +154,7 @@ fn readonly(type_args: &[Type], span: Span) -> Result<Type, String> {
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Object(ObjectType {
+                TypeKind::Object(ObjectType<'arena> {
                     members: new_members,
                     span,
                 }),
@@ -222,7 +222,7 @@ fn record(
     use typedlua_parser::ast::Ident;
 
     let key_id = common_ids.key;
-    let index_sig = IndexSignature {
+    let index_sig = IndexSignature<'arena> {
         key_name: Ident::new(key_id, span),
         key_type: index_key_type,
         value_type: value_type.clone(),
@@ -230,7 +230,7 @@ fn record(
     };
 
     Ok(Type::new(
-        TypeKind::Object(ObjectType {
+        TypeKind::Object(ObjectType<'arena> {
             members: vec![ObjectTypeMember::Index(index_sig)],
             span,
         }),
@@ -255,7 +255,7 @@ fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
             // Extract the property names to pick
             let keys_to_pick = extract_string_literal_keys(keys)?;
 
-            let new_members: Vec<ObjectTypeMember> = obj
+            let new_members: Vec<ObjectTypeMember<'arena>> = obj
                 .members
                 .iter()
                 .filter_map(|member| {
@@ -276,7 +276,7 @@ fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Object(ObjectType {
+                TypeKind::Object(ObjectType<'arena> {
                     members: new_members,
                     span,
                 }),
@@ -304,7 +304,7 @@ fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
             // Extract the property names to omit
             let keys_to_omit = extract_string_literal_keys(keys)?;
 
-            let new_members: Vec<ObjectTypeMember> = obj
+            let new_members: Vec<ObjectTypeMember<'arena>> = obj
                 .members
                 .iter()
                 .filter_map(|member| {
@@ -325,7 +325,7 @@ fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Object(ObjectType {
+                TypeKind::Object(ObjectType<'arena> {
                     members: new_members,
                     span,
                 }),
@@ -350,7 +350,7 @@ fn exclude(type_args: &[Type], span: Span) -> Result<Type, String> {
 
     match &typ.kind {
         TypeKind::Union(types) => {
-            let remaining: Vec<Type> = types
+            let remaining: Vec<Type<'arena>> = types
                 .iter()
                 .filter(|t| !is_assignable_to(t, exclude_type))
                 .cloned()
@@ -389,7 +389,7 @@ fn extract(type_args: &[Type], span: Span) -> Result<Type, String> {
 
     match &typ.kind {
         TypeKind::Union(types) => {
-            let extracted: Vec<Type> = types
+            let extracted: Vec<Type<'arena>> = types
                 .iter()
                 .filter(|t| is_assignable_to(t, extract_type))
                 .cloned()
@@ -427,7 +427,7 @@ fn non_nilable(type_args: &[Type], span: Span) -> Result<Type, String> {
 
     match &typ.kind {
         TypeKind::Union(types) => {
-            let non_nil: Vec<Type> = types
+            let non_nil: Vec<Type<'arena>> = types
                 .iter()
                 .filter(|t| !is_nil_or_void(t))
                 .cloned()
@@ -523,7 +523,7 @@ fn parameters(type_args: &[Type], span: Span) -> Result<Type, String> {
 
     match &typ.kind {
         TypeKind::Function(ref func) => {
-            let param_types: Vec<Type> = func
+            let param_types: Vec<Type<'arena>> = func
                 .parameters
                 .iter()
                 .filter_map(|p| p.type_annotation.clone())
@@ -537,9 +537,9 @@ fn parameters(type_args: &[Type], span: Span) -> Result<Type, String> {
 
 /// Evaluate a mapped type: { [K in T]: V }
 /// Transforms the mapped type into a concrete object type
-pub fn evaluate_mapped_type(
+pub fn evaluate_mapped_type<'arena>(
     mapped: &MappedType,
-    type_env: &TypeEnvironment,
+    type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     // Resolve the 'in' type if it's a KeyOf expression
@@ -573,7 +573,7 @@ pub fn evaluate_mapped_type(
                 MappedTypeModifier::None => false,
             };
 
-            ObjectTypeMember::Property(PropertySignature {
+            ObjectTypeMember::Property(PropertySignature<'arena> {
                 is_readonly,
                 name: Ident::new(key_id, mapped.span),
                 is_optional,
@@ -584,7 +584,7 @@ pub fn evaluate_mapped_type(
         .collect();
 
     Ok(Type::new(
-        TypeKind::Object(ObjectType {
+        TypeKind::Object(ObjectType<'arena> {
             members,
             span: mapped.span,
         }),
@@ -593,9 +593,9 @@ pub fn evaluate_mapped_type(
 }
 
 /// Evaluate keyof operator - extracts property names from an object type
-pub fn evaluate_keyof(
-    typ: &Type,
-    type_env: &TypeEnvironment,
+pub fn evaluate_keyof<'arena>(
+    typ: &Type<'arena>,
+    type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     // Resolve type reference first
@@ -649,9 +649,9 @@ pub fn evaluate_keyof(
 
 /// Evaluate a conditional type: T extends U ? X : Y
 /// Also handles infer keyword: T extends Array<infer U> ? U : never
-pub fn evaluate_conditional_type(
+pub fn evaluate_conditional_type<'arena>(
     conditional: &typedlua_parser::ast::types::ConditionalType,
-    type_env: &TypeEnvironment,
+    type_env: &TypeEnvironment<'arena>,
 ) -> Result<Type, String> {
     use crate::core::type_compat::TypeCompatibility;
     use rustc_hash::FxHashMap;
@@ -661,7 +661,7 @@ pub fn evaluate_conditional_type(
     let extends_type = &conditional.extends_type;
 
     // Check if extends_type contains infer - if so, we need pattern matching
-    let mut inferred_types: FxHashMap<String, Type> = FxHashMap::default();
+    let mut inferred_types: FxHashMap<String, Type<'arena>> = FxHashMap::default();
     let has_infer = contains_infer(extends_type);
 
     if has_infer {
@@ -725,7 +725,7 @@ pub fn evaluate_conditional_type(
 }
 
 /// Helper to resolve type references
-fn resolve_type_reference(typ: &Type, type_env: &TypeEnvironment) -> Type {
+fn resolve_type_reference(typ: &Type<'arena>, type_env: &TypeEnvironment<'arena>) -> Type<'arena> {
     match &typ.kind {
         TypeKind::Reference(type_ref) => {
             let type_name = type_ref.name.node.to_string();
@@ -739,7 +739,7 @@ fn resolve_type_reference(typ: &Type, type_env: &TypeEnvironment) -> Type {
 }
 
 /// Helper to check if two types are structurally equal (simplified)
-fn types_structurally_equal(t1: &Type, t2: &Type) -> bool {
+fn types_structurally_equal(t1: &Type<'arena>, t2: &Type<'arena>) -> bool {
     match (&t1.kind, &t2.kind) {
         (TypeKind::Primitive(p1), TypeKind::Primitive(p2)) => p1 == p2,
         (TypeKind::Literal(l1), TypeKind::Literal(l2)) => l1 == l2,
@@ -750,7 +750,7 @@ fn types_structurally_equal(t1: &Type, t2: &Type) -> bool {
 }
 
 /// Check if a type contains an infer keyword
-fn contains_infer(typ: &Type) -> bool {
+fn contains_infer(typ: &Type<'arena>) -> bool {
     match &typ.kind {
         TypeKind::Infer(_) => true,
         TypeKind::Array(elem) => contains_infer(elem),
@@ -772,11 +772,11 @@ fn contains_infer(typ: &Type) -> bool {
 }
 
 /// Try to match a check_type against a pattern (extends_type) and extract inferred types
-fn try_match_and_infer(
-    check_type: &Type,
-    pattern: &Type,
-    inferred: &mut FxHashMap<String, Type>,
-    type_env: &TypeEnvironment,
+fn try_match_and_infer<'arena>(
+    check_type: &Type<'arena>,
+    pattern: &Type<'arena>,
+    inferred: &mut FxHashMap<String, Type<'arena>>,
+    type_env: &TypeEnvironment<'arena>,
 ) -> bool {
     match &pattern.kind {
         // If pattern is `infer R`, capture the check_type as R
@@ -881,9 +881,9 @@ fn try_match_and_infer(
 }
 
 /// Substitute inferred type variables in a type
-fn substitute_inferred_types(
-    typ: &Type,
-    inferred: &FxHashMap<String, Type>,
+fn substitute_inferred_types<'arena>(
+    typ: &Type<'arena>,
+    inferred: &FxHashMap<String, Type<'arena>>,
 ) -> Result<Type, String> {
     match &typ.kind {
         // If it's a reference to an inferred type variable, substitute it
@@ -936,9 +936,9 @@ fn substitute_inferred_types(
 
 /// Extract keys from a type for mapped type iteration
 /// Currently supports: string literal unions and type references to them
-fn extract_keys_from_type(
-    typ: &Type,
-    type_env: &TypeEnvironment,
+fn extract_keys_from_type<'arena>(
+    typ: &Type<'arena>,
+    type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Vec<String>, String> {
     match &typ.kind {
@@ -997,7 +997,7 @@ fn extract_keys_from_type(
 // Helper functions
 
 /// Extract string literal keys from a type (for Pick/Omit)
-fn extract_string_literal_keys(typ: &Type) -> Result<Vec<String>, String> {
+fn extract_string_literal_keys(typ: &Type<'arena>) -> Result<Vec<String>, String> {
     match &typ.kind {
         TypeKind::Literal(Literal::String(s)) => Ok(vec![s.clone()]),
         TypeKind::Union(types) => types
@@ -1017,7 +1017,7 @@ fn extract_string_literal_keys(typ: &Type) -> Result<Vec<String>, String> {
 }
 
 /// Check if a type is nil or void
-fn is_nil_or_void(typ: &Type) -> bool {
+fn is_nil_or_void(typ: &Type<'arena>) -> bool {
     matches!(
         typ.kind,
         TypeKind::Primitive(PrimitiveType::Nil) | TypeKind::Primitive(PrimitiveType::Void)
@@ -1025,16 +1025,16 @@ fn is_nil_or_void(typ: &Type) -> bool {
 }
 
 /// Simple type assignability check
-fn is_assignable_to(source: &Type, target: &Type) -> bool {
+fn is_assignable_to(source: &Type<'arena>, target: &Type<'arena>) -> bool {
     use crate::core::type_compat::TypeCompatibility;
     TypeCompatibility::is_assignable(source, target)
 }
 
 /// Evaluate a template literal type to a union of string literals
 /// For example: `Hello ${T}` where T = "World" | "Rust" becomes "Hello World" | "Hello Rust"
-pub fn evaluate_template_literal_type(
+pub fn evaluate_template_literal_type<'arena>(
     template: &typedlua_parser::ast::types::TemplateLiteralType,
-    type_env: &TypeEnvironment,
+    type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type, String> {
     use typedlua_parser::ast::types::TemplateLiteralTypePart;
@@ -1085,7 +1085,7 @@ pub fn evaluate_template_literal_type(
             template.span,
         ))
     } else {
-        let literal_types: Vec<Type> = combinations
+        let literal_types: Vec<Type<'arena>> = combinations
             .into_iter()
             .map(|s| Type::new(TypeKind::Literal(Literal::String(s)), template.span))
             .collect();
@@ -1095,9 +1095,9 @@ pub fn evaluate_template_literal_type(
 }
 
 /// Expand a type to all possible string literal values
-fn expand_type_to_strings(
-    ty: &Type,
-    type_env: &TypeEnvironment,
+fn expand_type_to_strings<'arena>(
+    ty: &Type<'arena>,
+    type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Vec<String>, String> {
     // First resolve any type references
@@ -1169,20 +1169,20 @@ mod tests {
         Span::new(0, 0, 0, 0)
     }
 
-    fn make_object_type(properties: Vec<(&str, Type, bool, bool)>) -> Type {
+    fn make_object_type(properties: Vec<(&str, Type<'arena>, bool, bool)>) -> Type<'arena> {
         let interner = typedlua_parser::string_interner::StringInterner::new();
         make_object_type_with_interner(&interner, properties)
     }
 
-    fn make_object_type_with_interner(
+    fn make_object_type_with_interner<'arena>(
         interner: &typedlua_parser::string_interner::StringInterner,
-        properties: Vec<(&str, Type, bool, bool)>,
-    ) -> Type {
+        properties: Vec<(&str, Type<'arena>, bool, bool)>,
+    ) -> Type<'arena> {
         let members = properties
             .into_iter()
             .map(|(name, typ, optional, readonly)| {
                 let name_id = interner.intern(name);
-                ObjectTypeMember::Property(PropertySignature {
+                ObjectTypeMember::Property(PropertySignature<'arena> {
                     is_readonly: readonly,
                     name: Ident::new(name_id, make_span()),
                     is_optional: optional,
@@ -1193,7 +1193,7 @@ mod tests {
             .collect();
 
         Type::new(
-            TypeKind::Object(ObjectType {
+            TypeKind::Object(ObjectType<'arena> {
                 members,
                 span: make_span(),
             }),
@@ -1388,7 +1388,7 @@ mod tests {
         use typedlua_parser::ast::types::FunctionType;
 
         let func = Type::new(
-            TypeKind::Function(FunctionType {
+            TypeKind::Function(FunctionType<'arena> {
                 type_parameters: None,
                 parameters: vec![],
                 return_type: Box::new(Type::new(
@@ -1656,10 +1656,10 @@ mod tests {
         let y_id = interner.intern("y");
 
         let func = Type::new(
-            TypeKind::Function(FunctionType {
+            TypeKind::Function(FunctionType<'arena> {
                 type_parameters: None,
                 parameters: vec![
-                    Parameter {
+                    Parameter<'arena> {
                         pattern: Pattern::Identifier(Ident::new(x_id, make_span())),
                         type_annotation: Some(Type::new(
                             TypeKind::Primitive(PrimitiveType::String),
@@ -1670,7 +1670,7 @@ mod tests {
                         is_optional: false,
                         span: make_span(),
                     },
-                    Parameter {
+                    Parameter<'arena> {
                         pattern: Pattern::Identifier(Ident::new(y_id, make_span())),
                         type_annotation: Some(Type::new(
                             TypeKind::Primitive(PrimitiveType::Number),
