@@ -2,6 +2,9 @@ pub mod dependency_graph;
 pub mod error;
 pub mod registry;
 
+#[cfg(test)]
+mod error_tests;
+
 pub use dependency_graph::DependencyGraph;
 pub use error::{ModuleError, ModuleId, ModuleKind};
 pub use registry::{CompiledModule, ExportedSymbol, ModuleExports, ModuleRegistry, ModuleStatus};
