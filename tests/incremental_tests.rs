@@ -12,15 +12,16 @@ fn compute_hashes(
     source: &str,
     module_path: PathBuf,
 ) -> Result<rustc_hash::FxHashMap<String, u64>, TypeCheckError> {
+    let arena = bumpalo::Bump::new();
     let handler = Arc::new(CollectingDiagnosticHandler::new());
     let (interner, common) =
         typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
     let mut lexer = Lexer::new(source, handler.clone(), &interner);
     let tokens = lexer.tokenize().expect("Lexing failed");
-    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common);
+    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);
     let program = parser.parse().expect("Parsing failed");
 
-    let type_checker = TypeChecker::new(handler, &interner, &common);
+    let type_checker = TypeChecker::new(handler, &interner, &common, &arena);
     let hashes = type_checker.compute_declaration_hashes(&program, module_path, &interner);
 
     Ok(hashes)

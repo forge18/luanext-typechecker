@@ -87,7 +87,7 @@ mod tests {
     use super::*;
     use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
 
-    fn create_test_type(primitive: PrimitiveType) -> Type {
+    fn create_test_type(primitive: PrimitiveType) -> Type<'static> {
         Type {
             kind: TypeKind::Primitive(primitive),
             span: typedlua_parser::span::Span::dummy(),

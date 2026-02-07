@@ -201,7 +201,7 @@ impl<'arena> TypeCheckVisitor for AccessControl<'arena> {
     }
 }
 
-impl<'arena> AccessControlVisitor for AccessControl<'arena> {
+impl<'arena> AccessControlVisitor<'arena> for AccessControl<'arena> {
     fn check_member_access(
         &self,
         current_class: &Option<ClassContext<'arena>>,

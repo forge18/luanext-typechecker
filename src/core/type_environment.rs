@@ -397,6 +397,7 @@ impl<'arena> TypeEnvironment<'arena> {
     /// Instantiate a generic type alias with the given type arguments, with caching
     pub fn instantiate_generic_type(
         &self,
+        arena: &'arena bumpalo::Bump,
         name: &str,
         type_args: &[Type<'arena>],
         _span: Span,
@@ -417,6 +418,7 @@ impl<'arena> TypeEnvironment<'arena> {
             .ok_or_else(|| format!("Generic type '{}' not found", name))?;
 
         let instantiated = crate::types::generics::instantiate_type(
+            arena,
             &generic_alias.typ,
             &generic_alias.type_parameters,
             type_args,
@@ -524,6 +526,7 @@ impl<'arena> TypeEnvironment<'arena> {
     /// Resolve a utility type with caching
     pub fn resolve_utility_type(
         &self,
+        arena: &'arena bumpalo::Bump,
         name: &str,
         type_args: &[Type<'arena>],
         span: Span,
@@ -541,7 +544,7 @@ impl<'arena> TypeEnvironment<'arena> {
         }
 
         use crate::types::utility_types::apply_utility_type;
-        let result = apply_utility_type(name, type_args, span, interner, common_ids)?;
+        let result = apply_utility_type(arena, name, type_args, span, interner, common_ids)?;
 
         cache.insert(cache_key, result.clone());
         Ok(result)

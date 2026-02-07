@@ -1,9 +1,11 @@
+use bumpalo::Bump;
 use crate::cli::config::CompilerOptions;
 use crate::cli::diagnostics::CollectingDiagnosticHandler;
 use std::sync::Arc;
 
 #[test]
 fn test_typechecker_di_integration() {
+    let arena = Bump::new();
     let mut container = crate::di::DiContainer::new();
 
     // Register required services
@@ -26,7 +28,7 @@ fn test_typechecker_di_integration() {
 
     // Test TypeChecker creation with DI
     let checker =
-        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common);
+        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common, &arena);
 
     // Verify the checker was created successfully (can't access private fields)
     assert!(true); // Successful creation is the test
@@ -63,6 +65,7 @@ fn test_typechecker_state_di_integration() {
 
 #[test]
 fn test_default_container_with_typechecker() {
+    let arena = Bump::new();
     let mut container = crate::di::create_default_container();
 
     // Create string interner
@@ -71,7 +74,7 @@ fn test_default_container_with_typechecker() {
 
     // Test that TypeChecker can be created with default container
     let checker =
-        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common);
+        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common, &arena);
 
     // Verify it works (can't access private fields directly)
     assert!(true); // Successful creation indicates DI works
@@ -118,6 +121,7 @@ fn test_di_container_service_lifetimes() {
 
 #[test]
 fn test_di_container_with_custom_options() {
+    let arena = Bump::new();
     let mut container = crate::di::DiContainer::new();
 
     // Register services with custom configuration
@@ -145,7 +149,7 @@ fn test_di_container_with_custom_options() {
 
     // Test TypeChecker with custom options
     let checker =
-        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common);
+        crate::core::type_checker::TypeChecker::new_with_di(&mut container, &interner, &common, &arena);
 
     // Verify custom options were used
     // Can't access private fields directly, but we can verify the checker was created successfully

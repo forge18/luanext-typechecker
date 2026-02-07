@@ -1170,22 +1170,24 @@ fn cartesian_product(vecs: &[Vec<String>]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
     use typedlua_parser::ast::Ident;
 
     fn make_span() -> Span {
         Span::new(0, 0, 0, 0)
     }
 
-    fn make_object_type<'arena>(properties: Vec<(&str, Type<'arena>, bool, bool)>) -> Type<'arena> {
+    fn make_object_type<'arena>(arena: &'arena Bump, properties: Vec<(&str, Type<'arena>, bool, bool)>) -> Type<'arena> {
         let interner = typedlua_parser::string_interner::StringInterner::new();
-        make_object_type_with_interner(&interner, properties)
+        make_object_type_with_interner(arena, &interner, properties)
     }
 
     fn make_object_type_with_interner<'arena>(
+        arena: &'arena Bump,
         interner: &typedlua_parser::string_interner::StringInterner,
         properties: Vec<(&str, Type<'arena>, bool, bool)>,
     ) -> Type<'arena> {
-        let members = properties
+        let members: Vec<_> = properties
             .into_iter()
             .map(|(name, typ, optional, readonly)| {
                 let name_id = interner.intern(name);
@@ -1201,7 +1203,7 @@ mod tests {
 
         Type::new(
             TypeKind::Object(ObjectType {
-                members,
+                members: arena.alloc_slice_fill_iter(members),
                 span: make_span(),
             }),
             make_span(),
@@ -1210,7 +1212,8 @@ mod tests {
 
     #[test]
     fn test_partial() {
-        let obj = make_object_type(vec![
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![
             (
                 "name",
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
@@ -1225,11 +1228,11 @@ mod tests {
             ),
         ]);
 
-        let result = partial(&[obj], make_span()).unwrap();
+        let result = partial(&arena, &[obj], make_span()).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 2);
-            for member in &obj_type.members {
+            for member in obj_type.members.iter() {
                 if let ObjectTypeMember::Property(prop) = member {
                     assert!(
                         prop.is_optional,
@@ -1245,7 +1248,8 @@ mod tests {
 
     #[test]
     fn test_required() {
-        let obj = make_object_type(vec![
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![
             (
                 "name",
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
@@ -1260,11 +1264,11 @@ mod tests {
             ),
         ]);
 
-        let result = required(&[obj], make_span()).unwrap();
+        let result = required(&arena, &[obj], make_span()).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 2);
-            for member in &obj_type.members {
+            for member in obj_type.members.iter() {
                 if let ObjectTypeMember::Property(prop) = member {
                     assert!(
                         !prop.is_optional,
@@ -1280,7 +1284,8 @@ mod tests {
 
     #[test]
     fn test_readonly() {
-        let obj = make_object_type(vec![
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![
             (
                 "name",
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
@@ -1295,11 +1300,11 @@ mod tests {
             ),
         ]);
 
-        let result = readonly(&[obj], make_span()).unwrap();
+        let result = readonly(&arena, &[obj], make_span()).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 2);
-            for member in &obj_type.members {
+            for member in obj_type.members.iter() {
                 if let ObjectTypeMember::Property(prop) = member {
                     assert!(
                         prop.is_readonly,
@@ -1315,12 +1320,13 @@ mod tests {
 
     #[test]
     fn test_record() {
+        let arena = Bump::new();
         let key_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let result = record(&[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
+        let result = record(&arena, &[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1332,17 +1338,18 @@ mod tests {
 
     #[test]
     fn test_exclude() {
+        let arena = Bump::new();
         let union = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
-            ]),
+            ])),
             make_span(),
         );
         let exclude = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = self::exclude(&[union, exclude], make_span()).unwrap();
+        let result = self::exclude(&arena, &[union, exclude], make_span()).unwrap();
 
         if let TypeKind::Union(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -1356,15 +1363,16 @@ mod tests {
 
     #[test]
     fn test_non_nilable() {
+        let arena = Bump::new();
         let union = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-            ]),
+            ])),
             make_span(),
         );
 
-        let result = non_nilable(&[union], make_span()).unwrap();
+        let result = non_nilable(&arena, &[union], make_span()).unwrap();
 
         assert!(matches!(
             result.kind,
@@ -1374,8 +1382,9 @@ mod tests {
 
     #[test]
     fn test_nilable() {
+        let arena = Bump::new();
         let typ = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
-        let result = nilable(&[typ], make_span()).unwrap();
+        let result = nilable(&arena, &[typ], make_span()).unwrap();
 
         if let TypeKind::Union(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -1394,11 +1403,12 @@ mod tests {
     fn test_return_type() {
         use typedlua_parser::ast::types::FunctionType;
 
+        let arena = Bump::new();
         let func = Type::new(
             TypeKind::Function(FunctionType {
                 type_parameters: None,
-                parameters: vec![],
-                return_type: Box::new(Type::new(
+                parameters: &[],
+                return_type: &*arena.alloc(Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
                     make_span(),
                 )),
@@ -1417,8 +1427,10 @@ mod tests {
 
     #[test]
     fn test_pick() {
+        let arena = Bump::new();
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
+            &arena,
             &interner,
             vec![
                 (
@@ -1444,7 +1456,7 @@ mod tests {
 
         // Pick<Obj, "name" | "age">
         let keys = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Literal(Literal::String("name".to_string())),
                     make_span(),
@@ -1453,11 +1465,11 @@ mod tests {
                     TypeKind::Literal(Literal::String("age".to_string())),
                     make_span(),
                 ),
-            ]),
+            ])),
             make_span(),
         );
 
-        let result = pick(&[obj, keys], make_span(), &interner).unwrap();
+        let result = pick(&arena, &[obj, keys], make_span(), &interner).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 2);
@@ -1469,8 +1481,10 @@ mod tests {
 
     #[test]
     fn test_pick_single_key() {
+        let arena = Bump::new();
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
+            &arena,
             &interner,
             vec![
                 (
@@ -1494,7 +1508,7 @@ mod tests {
             make_span(),
         );
 
-        let result = pick(&[obj, keys], make_span(), &interner).unwrap();
+        let result = pick(&arena, &[obj, keys], make_span(), &interner).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1505,8 +1519,10 @@ mod tests {
 
     #[test]
     fn test_omit() {
+        let arena = Bump::new();
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
+            &arena,
             &interner,
             vec![
                 (
@@ -1536,7 +1552,7 @@ mod tests {
             make_span(),
         );
 
-        let result = omit(&[obj, keys], make_span(), &interner).unwrap();
+        let result = omit(&arena, &[obj, keys], make_span(), &interner).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 2);
@@ -1548,8 +1564,10 @@ mod tests {
 
     #[test]
     fn test_omit_multiple_keys() {
+        let arena = Bump::new();
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
+            &arena,
             &interner,
             vec![
                 (
@@ -1575,7 +1593,7 @@ mod tests {
 
         // Omit<Obj, "name" | "age">
         let keys = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Literal(Literal::String("name".to_string())),
                     make_span(),
@@ -1584,11 +1602,11 @@ mod tests {
                     TypeKind::Literal(Literal::String("age".to_string())),
                     make_span(),
                 ),
-            ]),
+            ])),
             make_span(),
         );
 
-        let result = omit(&[obj, keys], make_span(), &interner).unwrap();
+        let result = omit(&arena, &[obj, keys], make_span(), &interner).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1604,17 +1622,18 @@ mod tests {
 
     #[test]
     fn test_extract() {
+        let arena = Bump::new();
         let union = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
-            ]),
+            ])),
             make_span(),
         );
         let extract_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = extract(&[union, extract_type], make_span()).unwrap();
+        let result = extract(&arena, &[union, extract_type], make_span()).unwrap();
 
         // Should extract just string
         assert!(matches!(
@@ -1625,25 +1644,26 @@ mod tests {
 
     #[test]
     fn test_extract_multiple() {
+        let arena = Bump::new();
         let union = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
-            ]),
+            ])),
             make_span(),
         );
 
         // Extract string | number
         let extract_type = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
-            ]),
+            ])),
             make_span(),
         );
 
-        let result = extract(&[union, extract_type], make_span()).unwrap();
+        let result = extract(&arena, &[union, extract_type], make_span()).unwrap();
 
         if let TypeKind::Union(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -1658,6 +1678,7 @@ mod tests {
         use typedlua_parser::ast::statement::Parameter;
         use typedlua_parser::ast::types::FunctionType;
 
+        let arena = Bump::new();
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
         let y_id = interner.intern("y");
@@ -1665,7 +1686,7 @@ mod tests {
         let func = Type::new(
             TypeKind::Function(FunctionType {
                 type_parameters: None,
-                parameters: vec![
+                parameters: arena.alloc_slice_fill_iter([
                     Parameter {
                         pattern: Pattern::Identifier(Ident::new(x_id, make_span())),
                         type_annotation: Some(Type::new(
@@ -1688,8 +1709,8 @@ mod tests {
                         is_optional: false,
                         span: make_span(),
                     },
-                ],
-                return_type: Box::new(Type::new(
+                ]),
+                return_type: &*arena.alloc(Type::new(
                     TypeKind::Primitive(PrimitiveType::Void),
                     make_span(),
                 )),
@@ -1699,7 +1720,7 @@ mod tests {
             make_span(),
         );
 
-        let result = parameters(&[func], make_span()).unwrap();
+        let result = parameters(&arena, &[func], make_span()).unwrap();
 
         if let TypeKind::Tuple(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -1718,7 +1739,8 @@ mod tests {
 
     #[test]
     fn test_apply_utility_type_partial() {
-        let obj = make_object_type(vec![(
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![(
             "name",
             Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
             false,
@@ -1728,7 +1750,7 @@ mod tests {
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result =
-            apply_utility_type("Partial", &[obj], make_span(), &interner, &common_ids).unwrap();
+            apply_utility_type(&arena, "Partial", &[obj], make_span(), &interner, &common_ids).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1742,10 +1764,11 @@ mod tests {
 
     #[test]
     fn test_apply_utility_type_unknown() {
-        let obj = make_object_type(vec![]);
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![]);
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let result = apply_utility_type("UnknownType", &[obj], make_span(), &interner, &common_ids);
+        let result = apply_utility_type(&arena, "UnknownType", &[obj], make_span(), &interner, &common_ids);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown utility type"));
@@ -1753,51 +1776,56 @@ mod tests {
 
     #[test]
     fn test_partial_wrong_arg_count() {
-        let obj = make_object_type(vec![]);
-        let result = partial(&[], make_span());
+        let arena = Bump::new();
+        let obj = make_object_type(&arena, vec![]);
+        let result = partial(&arena, &[], make_span());
         assert!(result.is_err());
 
-        let result = partial(&[obj.clone(), obj], make_span());
+        let result = partial(&arena, &[obj.clone(), obj], make_span());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_partial_non_object() {
+        let arena = Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
-        let result = partial(&[string_type], make_span());
+        let result = partial(&arena, &[string_type], make_span());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_required_wrong_arg_count() {
-        let _obj = make_object_type(vec![]);
-        let result = required(&[], make_span());
+        let arena = Bump::new();
+        let _obj = make_object_type(&arena, vec![]);
+        let result = required(&arena, &[], make_span());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_readonly_array() {
+        let arena = Bump::new();
         let array_type = Type::new(
-            TypeKind::Array(Box::new(Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 make_span(),
             ))),
             make_span(),
         );
 
-        let result = readonly(std::slice::from_ref(&array_type), make_span()).unwrap();
+        let result = readonly(&arena, std::slice::from_ref(&array_type), make_span()).unwrap();
         // Arrays are returned as-is for now
         assert!(matches!(result.kind, TypeKind::Array(_)));
     }
 
     #[test]
     fn test_record_number_keys() {
+        let arena = Bump::new();
         let key_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let result = record(&[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
+        let result = record(&arena, &[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1811,9 +1839,10 @@ mod tests {
 
     #[test]
     fn test_record_union_string_literals() {
+        let arena = Bump::new();
         // Record<"a" | "b", number>
         let key_type = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Literal(Literal::String("a".to_string())),
                     make_span(),
@@ -1822,14 +1851,14 @@ mod tests {
                     TypeKind::Literal(Literal::String("b".to_string())),
                     make_span(),
                 ),
-            ]),
+            ])),
             make_span(),
         );
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let result = record(&[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
+        let result = record(&arena, &[key_type, value_type], make_span(), &interner, &common_ids).unwrap();
 
         if let TypeKind::Object(obj_type) = &result.kind {
             assert_eq!(obj_type.members.len(), 1);
@@ -1841,23 +1870,25 @@ mod tests {
 
     #[test]
     fn test_record_invalid_key_type() {
+        let arena = Bump::new();
         let key_type = Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span());
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
         let (interner, common_ids) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
-        let result = record(&[key_type, value_type], make_span(), &interner, &common_ids);
+        let result = record(&arena, &[key_type, value_type], make_span(), &interner, &common_ids);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_exclude_non_union() {
+        let arena = Bump::new();
         // Exclude<string, number> should return string (since string is not assignable to number)
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
-        let result = exclude(&[string_type.clone(), number_type], make_span()).unwrap();
+        let result = exclude(&arena, &[string_type.clone(), number_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -1866,10 +1897,11 @@ mod tests {
 
     #[test]
     fn test_exclude_all_types() {
+        let arena = Bump::new();
         // Exclude<string, string> should return never
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = exclude(&[string_type.clone(), string_type], make_span()).unwrap();
+        let result = exclude(&arena, &[string_type.clone(), string_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -1878,10 +1910,11 @@ mod tests {
 
     #[test]
     fn test_extract_non_union_match() {
+        let arena = Bump::new();
         // Extract<string, string> should return string
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = extract(&[string_type.clone(), string_type], make_span()).unwrap();
+        let result = extract(&arena, &[string_type.clone(), string_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -1890,11 +1923,12 @@ mod tests {
 
     #[test]
     fn test_extract_non_union_no_match() {
+        let arena = Bump::new();
         // Extract<string, number> should return never
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
-        let result = extract(&[string_type, number_type], make_span()).unwrap();
+        let result = extract(&arena, &[string_type, number_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -1903,15 +1937,16 @@ mod tests {
 
     #[test]
     fn test_non_nilable_nullable_type() {
+        let arena = Bump::new();
         let nullable = Type::new(
-            TypeKind::Nullable(Box::new(Type::new(
+            TypeKind::Nullable(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 make_span(),
             ))),
             make_span(),
         );
 
-        let result = non_nilable(&[nullable], make_span()).unwrap();
+        let result = non_nilable(&arena, &[nullable], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -1920,9 +1955,10 @@ mod tests {
 
     #[test]
     fn test_non_nilable_non_union() {
+        let arena = Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = non_nilable(&[string_type], make_span()).unwrap();
+        let result = non_nilable(&arena, &[string_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -1931,9 +1967,10 @@ mod tests {
 
     #[test]
     fn test_non_nilable_only_nil() {
+        let arena = Bump::new();
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span());
 
-        let result = non_nilable(&[nil_type], make_span()).unwrap();
+        let result = non_nilable(&arena, &[nil_type], make_span()).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -1942,15 +1979,16 @@ mod tests {
 
     #[test]
     fn test_nilable_already_nilable() {
+        let arena = Bump::new();
         let union = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-            ]),
+            ])),
             make_span(),
         );
 
-        let result = nilable(std::slice::from_ref(&union), make_span()).unwrap();
+        let result = nilable(&arena, std::slice::from_ref(&union), make_span()).unwrap();
         // Should return the same type since it already has nil
         if let TypeKind::Union(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -1961,15 +1999,16 @@ mod tests {
 
     #[test]
     fn test_nilable_nullable() {
+        let arena = Bump::new();
         let nullable = Type::new(
-            TypeKind::Nullable(Box::new(Type::new(
+            TypeKind::Nullable(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 make_span(),
             ))),
             make_span(),
         );
 
-        let result = nilable(std::slice::from_ref(&nullable), make_span()).unwrap();
+        let result = nilable(&arena, std::slice::from_ref(&nullable), make_span()).unwrap();
         // Should return the same nullable type
         assert!(matches!(result.kind, TypeKind::Nullable(_)));
     }
@@ -1984,9 +2023,10 @@ mod tests {
 
     #[test]
     fn test_parameters_non_function() {
+        let arena = Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        let result = parameters(&[string_type], make_span());
+        let result = parameters(&arena, &[string_type], make_span());
         assert!(result.is_err());
     }
 
@@ -2003,6 +2043,7 @@ mod tests {
 
     #[test]
     fn test_extract_string_literal_keys() {
+        let arena = Bump::new();
         let single_key = Type::new(
             TypeKind::Literal(Literal::String("name".to_string())),
             make_span(),
@@ -2011,7 +2052,7 @@ mod tests {
         assert_eq!(keys, vec!["name"]);
 
         let union_keys = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Literal(Literal::String("a".to_string())),
                     make_span(),
@@ -2020,7 +2061,7 @@ mod tests {
                     TypeKind::Literal(Literal::String("b".to_string())),
                     make_span(),
                 ),
-            ]),
+            ])),
             make_span(),
         );
         let keys = extract_string_literal_keys(&union_keys).unwrap();

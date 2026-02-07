@@ -1,3 +1,4 @@
+use bumpalo::Bump;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use typedlua_parser::lexer::Lexer;
@@ -45,8 +46,9 @@ fn profile_typecheck(code: &str) -> (Duration, ProfilingData, String) {
 
     // Phase 2: Parsing
     let start = Instant::now();
-    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common);
-    let mut program = match parser.parse() {
+    let arena = Bump::new();
+    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);
+    let program = match parser.parse() {
         Ok(p) => p,
         Err(e) => return (start.elapsed(), data, format!("Parse error: {:?}", e)),
     };
@@ -58,10 +60,10 @@ fn profile_typecheck(code: &str) -> (Duration, ProfilingData, String) {
 
     // Phase 3: Type checking
     let start = Instant::now();
-    let mut checker = TypeChecker::new(handler.clone(), &interner, &common)
+    let mut checker = TypeChecker::new(handler.clone(), &interner, &common, &arena)
         .with_stdlib()
         .unwrap();
-    let result = checker.check_program(&mut program);
+    let result = checker.check_program(&program);
     data.check_program_time = start.elapsed();
 
     if let Err(e) = result {

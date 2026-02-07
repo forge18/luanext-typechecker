@@ -6,15 +6,16 @@ use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
 use typedlua_typechecker::{TypeCheckError, TypeChecker};
 
 fn parse_and_check(source: &str) -> Result<(), TypeCheckError> {
+    let arena = bumpalo::Bump::new();
     let handler = Arc::new(CollectingDiagnosticHandler::new());
     let (interner, common) =
         typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
     let mut lexer = Lexer::new(source, handler.clone(), &interner);
     let tokens = lexer.tokenize().expect("Lexing failed");
-    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common);
-    let mut program = parser.parse().expect("Parsing failed");
-    let mut type_checker = TypeChecker::new(handler, &interner, &common);
-    type_checker.check_program(&mut program)
+    let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);
+    let program = parser.parse().expect("Parsing failed");
+    let mut type_checker = TypeChecker::new(handler, &interner, &common, &arena);
+    type_checker.check_program(&program)
 }
 
 #[test]

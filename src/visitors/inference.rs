@@ -3,7 +3,7 @@ use super::TypeCheckVisitor;
 use crate::cli::diagnostics::DiagnosticHandler;
 use crate::core::type_compat::TypeCompatibility;
 use crate::core::type_environment::TypeEnvironment;
-use crate::types::generics::infer_type_arguments;
+use crate::types::generics::instantiate_type;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
@@ -21,24 +21,24 @@ use typedlua_parser::string_interner::StringInterner;
 
 /// Represents a variable binding from a pattern
 #[derive(Debug, Clone)]
-struct PatternBinding {
+struct PatternBinding<'arena> {
     typ: Type<'arena>,
     span: Span,
 }
 
 /// Collection of bindings from a pattern
 #[derive(Debug, Clone)]
-struct PatternBindings {
-    bindings: FxHashMap<String, PatternBinding>,
+struct PatternBindings<'arena> {
+    bindings: FxHashMap<String, PatternBinding<'arena>>,
 }
 
 /// Trait for type inference operations
-pub trait TypeInferenceVisitor: TypeCheckVisitor {
+pub trait TypeInferenceVisitor<'arena>: TypeCheckVisitor {
     /// Infer the type of an expression
-    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
+    fn infer_expression(&mut self, expr: &Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of binary operation
-    fn infer_binary_op<'arena>(
+    fn infer_binary_op(
         &self,
         op: BinaryOp,
         left: &Type<'arena>,
@@ -47,7 +47,7 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of unary operation
-    fn infer_unary_op<'arena>(
+    fn infer_unary_op(
         &self,
         op: UnaryOp,
         operand: &Type<'arena>,
@@ -55,24 +55,24 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of function call
-    fn infer_call<'arena>(
+    fn infer_call(
         &mut self,
         callee_type: &Type<'arena>,
-        args: &mut [Argument],
+        args: &[Argument<'arena>],
         span: Span,
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of a method call on an object
-    fn infer_method<'arena>(
+    fn infer_method(
         &self,
         obj_type: &Type<'arena>,
         method_name: &str,
-        _args: &[Argument],
+        _args: &[Argument<'arena>],
         span: Span,
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of member access
-    fn infer_member<'arena>(
+    fn infer_member(
         &self,
         obj_type: &Type<'arena>,
         member: &str,
@@ -80,19 +80,19 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of index access
-    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
+    fn infer_index(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Make a type optional by adding nil to the union
-    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
+    fn make_optional(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Remove nil from a type
-    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
+    fn remove_nil(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check if a type is nil
-    fn is_nil<'arena>(&self, typ: &Type<'arena>) -> bool;
+    fn is_nil(&self, typ: &Type<'arena>) -> bool;
 
     /// Infer type of null coalescing operation
-    fn infer_null_coalesce<'arena>(
+    fn infer_null_coalesce(
         &self,
         left: &Type<'arena>,
         right: &Type<'arena>,
@@ -100,36 +100,39 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check match expression and return result type
-    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
+    fn check_match(&mut self, match_expr: &MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check a pattern and bind variables
-    fn check_pattern<'arena>(
+    fn check_pattern(
         &mut self,
-        pattern: &Pattern,
+        pattern: &Pattern<'arena>,
         expected_type: &Type<'arena>,
     ) -> Result<(), TypeCheckError>;
 }
 
 /// Type inference implementation
-pub struct TypeInferrer<'a> {
+pub struct TypeInferrer<'a, 'arena> {
+    arena: &'arena bumpalo::Bump,
     symbol_table: &'a mut SymbolTable<'arena>,
     type_env: &'a mut TypeEnvironment<'arena>,
-    narrowing_context: &'a mut super::NarrowingContext,
-    access_control: &'a AccessControl,
+    narrowing_context: &'a mut super::NarrowingContext<'arena>,
+    access_control: &'a AccessControl<'arena>,
     interner: &'a StringInterner,
     diagnostic_handler: &'a Arc<dyn DiagnosticHandler>,
 }
 
-impl<'a> TypeInferrer<'a> {
-    pub fn new<'arena>(
+impl<'a, 'arena> TypeInferrer<'a, 'arena> {
+    pub fn new(
+        arena: &'arena bumpalo::Bump,
         symbol_table: &'a mut SymbolTable<'arena>,
         type_env: &'a mut TypeEnvironment<'arena>,
-        narrowing_context: &'a mut super::NarrowingContext,
-        access_control: &'a AccessControl,
+        narrowing_context: &'a mut super::NarrowingContext<'arena>,
+        access_control: &'a AccessControl<'arena>,
         interner: &'a StringInterner,
         diagnostic_handler: &'a Arc<dyn DiagnosticHandler>,
     ) -> Self {
         Self {
+            arena,
             symbol_table,
             type_env,
             narrowing_context,
@@ -140,21 +143,21 @@ impl<'a> TypeInferrer<'a> {
     }
 }
 
-impl TypeCheckVisitor for TypeInferrer<'_> {
+impl<'a, 'arena> TypeCheckVisitor for TypeInferrer<'a, 'arena> {
     fn name(&self) -> &'static str {
         "TypeInferrer"
     }
 }
 
-impl TypeInferenceVisitor for TypeInferrer<'_> {
+impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
     #[instrument(skip(self, expr), fields(expr_kind))]
-    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn infer_expression(&mut self, expr: &Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         let span = expr.span;
         let expr_kind = format!("{:?}", expr.kind);
 
         span!(Level::DEBUG, "infer_expression", kind = %expr_kind);
 
-        match &mut expr.kind {
+        match &expr.kind {
             ExpressionKind::Literal(lit) => {
                 debug!(literal = ?lit, "Inferring literal type");
                 Ok(Type::new(TypeKind::Literal(lit.clone()), span))
@@ -196,33 +199,11 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 self.infer_unary_op(*op, &operand_type, span)
             }
 
-            ExpressionKind::Call(callee, args, ref mut stored_type_args) => {
+            ExpressionKind::Call(callee, args, _stored_type_args) => {
                 let callee_type = self.infer_expression(callee)?;
 
-                // If callee is a generic function, infer and store type arguments
-                if let TypeKind::Function(func_type) = &callee_type.kind {
-                    if let Some(type_params) = &func_type.type_parameters {
-                        // Infer argument types
-                        let mut arg_types = Vec::with_capacity(args.len());
-                        for arg in args.iter_mut() {
-                            let arg_type =
-                                self.infer_expression(&mut arg.value).unwrap_or_else(|_| {
-                                    Type::new(
-                                        TypeKind::Primitive(PrimitiveType::Unknown),
-                                        arg.value.span,
-                                    )
-                                });
-                            arg_types.push(arg_type);
-                        }
-
-                        // Infer type arguments from function signature and argument types
-                        if let Ok(inferred_types) =
-                            infer_type_arguments(type_params, &func_type.parameters, &arg_types)
-                        {
-                            *stored_type_args = Some(inferred_types);
-                        }
-                    }
-                }
+                // Note: We can no longer mutate stored_type_args since AST is arena-allocated.
+                // Type argument inference results are used directly rather than stored back.
 
                 self.infer_call(&callee_type, args, span)
             }
@@ -232,20 +213,9 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 let method_name = self.interner.resolve(method.node);
                 let method_type = self.infer_method(&obj_type, &method_name, args, span)?;
 
-                // Set receiver_class based on inferred type (not variable name)
-                // This enables method-to-function conversion optimization
-                if let TypeKind::Reference(type_ref) = &obj_type.kind {
-                    let type_name = self.interner.resolve(type_ref.name.node);
-                    // Only set for classes (not interfaces) - check class_members
-                    if self.access_control.get_class_members(&type_name).is_some() {
-                        expr.receiver_class = Some(ReceiverClassInfo {
-                            class_name: type_ref.name.node,
-                            is_static: false,
-                        });
-                    }
-                }
-
-                expr.annotated_type = Some(method_type.clone());
+                // Note: receiver_class and annotated_type are no longer mutated
+                // since AST is arena-allocated (immutable). The type information
+                // is returned from infer_expression instead.
                 Ok(method_type)
             }
 
@@ -264,9 +234,9 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             ExpressionKind::Assignment(target, _op, value) => {
                 debug!("Inferring assignment expression");
 
-                let target_type = match &mut target.kind {
+                let target_type = match &target.kind {
                     ExpressionKind::Member(object, member) => {
-                        let obj_type = self.infer_expression(object.as_mut())?;
+                        let obj_type = self.infer_expression(object)?;
                         let member_name = self.interner.resolve(member.node);
 
                         if let TypeKind::Reference(type_ref) = &obj_type.kind {
@@ -317,31 +287,10 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 self.make_optional(indexed_type, span)
             }
 
-            ExpressionKind::OptionalCall(callee, args, ref mut stored_type_args) => {
+            ExpressionKind::OptionalCall(callee, args, _stored_type_args) => {
                 let callee_type = self.infer_expression(callee)?;
 
-                // If callee is a generic function, infer and store type arguments
-                if let TypeKind::Function(func_type) = &callee_type.kind {
-                    if let Some(type_params) = &func_type.type_parameters {
-                        let mut arg_types = Vec::with_capacity(args.len());
-                        for arg in args.iter_mut() {
-                            let arg_type =
-                                self.infer_expression(&mut arg.value).unwrap_or_else(|_| {
-                                    Type::new(
-                                        TypeKind::Primitive(PrimitiveType::Unknown),
-                                        arg.value.span,
-                                    )
-                                });
-                            arg_types.push(arg_type);
-                        }
-
-                        if let Ok(inferred_types) =
-                            infer_type_arguments(type_params, &func_type.parameters, &arg_types)
-                        {
-                            *stored_type_args = Some(inferred_types);
-                        }
-                    }
-                }
+                // Note: We can no longer mutate stored_type_args since AST is arena-allocated.
 
                 let return_type = self.infer_call(&callee_type, args, span)?;
                 self.make_optional(return_type, span)
@@ -358,7 +307,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 if elements.is_empty() {
                     // Empty array has unknown element type
                     return Ok(Type::new(
-                        TypeKind::Array(Box::new(Type::new(
+                        TypeKind::Array(self.arena.alloc(Type::new(
                             TypeKind::Primitive(PrimitiveType::Unknown),
                             span,
                         ))),
@@ -369,7 +318,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 // Collect all element types, including from spreads
                 let mut element_types = Vec::new();
 
-                for elem in elements {
+                for elem in elements.iter() {
                     match elem {
                         ArrayElement::Expression(expr) => {
                             let elem_type = self.infer_expression(expr)?;
@@ -381,7 +330,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                             match &spread_type.kind {
                                 TypeKind::Array(elem_type) => {
                                     // Extract the element type from the spread array
-                                    element_types.push((**elem_type).clone());
+                                    element_types.push((*elem_type).clone());
                                 }
                                 _ => {
                                     return Err(TypeCheckError::new(
@@ -400,7 +349,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 // Find common type or create union
                 if element_types.is_empty() {
                     return Ok(Type::new(
-                        TypeKind::Array(Box::new(Type::new(
+                        TypeKind::Array(self.arena.alloc(Type::new(
                             TypeKind::Primitive(PrimitiveType::Unknown),
                             span,
                         ))),
@@ -408,39 +357,36 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                     ));
                 }
 
-                let mut result_type = element_types[0].clone();
+                let mut union_types = vec![element_types[0].clone()];
                 for elem_type in &element_types[1..] {
-                    if !TypeCompatibility::is_assignable(&result_type, elem_type)
-                        && !TypeCompatibility::is_assignable(elem_type, &result_type)
+                    if !TypeCompatibility::is_assignable(&union_types[0], elem_type)
+                        && !TypeCompatibility::is_assignable(elem_type, &union_types[0])
                     {
-                        // Types are incompatible, create union
-                        match &mut result_type.kind {
-                            TypeKind::Union(types) => {
-                                if !types
-                                    .iter()
-                                    .any(|t| TypeCompatibility::is_assignable(t, elem_type))
-                                {
-                                    types.push(elem_type.clone());
-                                }
-                            }
-                            _ => {
-                                result_type = Type::new(
-                                    TypeKind::Union(vec![result_type.clone(), elem_type.clone()]),
-                                    span,
-                                );
-                            }
+                        // Types are incompatible, add to union
+                        if !union_types
+                            .iter()
+                            .any(|t| TypeCompatibility::is_assignable(t, elem_type))
+                        {
+                            union_types.push(elem_type.clone());
                         }
                     }
                 }
 
-                Ok(Type::new(TypeKind::Array(Box::new(result_type)), span))
+                let result_type = if union_types.len() == 1 {
+                    union_types.into_iter().next().unwrap()
+                } else {
+                    let types = self.arena.alloc_slice_fill_iter(union_types.into_iter());
+                    Type::new(TypeKind::Union(types), span)
+                };
+
+                Ok(Type::new(TypeKind::Array(self.arena.alloc(result_type)), span))
             }
 
             ExpressionKind::Object(props) => {
                 // Infer object type from properties
                 let mut members = Vec::new();
 
-                for prop in props {
+                for prop in props.iter() {
                     match prop {
                         ObjectProperty::Property {
                             key,
@@ -498,7 +444,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                             match &spread_type.kind {
                                 TypeKind::Object(obj_type) => {
                                     // Add all members from the spread object
-                                    for member in &obj_type.members {
+                                    for member in obj_type.members.iter() {
                                         members.push(member.clone());
                                     }
                                 }
@@ -516,6 +462,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                     }
                 }
 
+                let members = self.arena.alloc_slice_fill_iter(members.into_iter());
                 Ok(Type::new(
                     TypeKind::Object(ObjectType { members, span }),
                     span,
@@ -527,7 +474,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 self.symbol_table.enter_scope();
 
                 // Register parameters in the scope
-                for param in &func_expr.parameters {
+                for param in func_expr.parameters.iter() {
                     if let Pattern::Identifier(ident) = &param.pattern {
                         let param_type = if let Some(type_ann) = &param.type_annotation {
                             // Use the declared type
@@ -548,8 +495,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 }
 
                 // Infer the return type from the block body
-                let mut body = func_expr.body.clone();
-                let body_type = match self.infer_block_return_type(&mut body)? {
+                let body_type = match self.infer_block_return_type(&func_expr.body)? {
                     Some(return_type) => return_type,
                     None => {
                         // No return statements found - void function
@@ -577,7 +523,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 let func_type = FunctionType {
                     type_parameters: func_expr.type_parameters.clone(),
                     parameters: func_expr.parameters.clone(),
-                    return_type: Box::new(
+                    return_type: self.arena.alloc(
                         func_expr
                             .return_type
                             .clone()
@@ -595,7 +541,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 self.symbol_table.enter_scope();
 
                 // Register parameters in the scope
-                for param in &arrow_fn.parameters {
+                for param in arrow_fn.parameters.iter() {
                     if let Pattern::Identifier(ident) = &param.pattern {
                         let param_type = if let Some(type_ann) = &param.type_annotation {
                             // Use the declared type
@@ -617,10 +563,8 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
 
                 // Infer the body type
                 let body_type = match &arrow_fn.body {
-                    ArrowBody::Expression(expr_box) => {
-                        // Make a mutable copy to infer
-                        let mut expr_copy = (**expr_box).clone();
-                        self.infer_expression(&mut expr_copy)?
+                    ArrowBody::Expression(expr) => {
+                        self.infer_expression(expr)?
                     }
                     ArrowBody::Block(_block) => {
                         // Block bodies not fully supported yet
@@ -659,7 +603,8 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 } else if TypeCompatibility::is_assignable(&else_type, &then_type) {
                     Ok(then_type)
                 } else {
-                    Ok(Type::new(TypeKind::Union(vec![then_type, else_type]), span))
+                    let types = self.arena.alloc_slice_fill_iter([then_type, else_type]);
+                    Ok(Type::new(TypeKind::Union(types), span))
                 }
             }
 
@@ -678,18 +623,16 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             }
 
             ExpressionKind::Try(try_expr) => {
-                let expr_type = self.infer_expression(&mut try_expr.expression)?;
-                let catch_type = self.infer_expression(&mut try_expr.catch_expression)?;
+                let expr_type = self.infer_expression(&try_expr.expression)?;
+                let catch_type = self.infer_expression(&try_expr.catch_expression)?;
 
                 if TypeCompatibility::is_assignable(&expr_type, &catch_type) {
                     Ok(catch_type)
                 } else if TypeCompatibility::is_assignable(&catch_type, &expr_type) {
                     Ok(expr_type)
                 } else {
-                    Ok(Type::new(
-                        TypeKind::Union(vec![expr_type, catch_type]),
-                        span,
-                    ))
+                    let types = self.arena.alloc_slice_fill_iter([expr_type, catch_type]);
+                    Ok(Type::new(TypeKind::Union(types), span))
                 }
             }
 
@@ -744,7 +687,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_binary_op<'arena>(
+    fn infer_binary_op(
         &self,
         op: BinaryOp,
         left: &Type<'arena>,
@@ -823,7 +766,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_unary_op<'arena>(
+    fn infer_unary_op(
         &self,
         op: UnaryOp,
         _operand: &Type<'arena>,
@@ -838,10 +781,10 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
     }
 
     #[instrument(skip(self, callee_type, args), fields(args_count = args.len(), return_type))]
-    fn infer_call<'arena>(
+    fn infer_call(
         &mut self,
         callee_type: &Type<'arena>,
-        args: &mut [Argument],
+        args: &[Argument<'arena>],
         span: Span,
     ) -> Result<Type<'arena>, TypeCheckError> {
         debug!(callee_type = ?callee_type.kind, "Inferring function call type");
@@ -912,12 +855,12 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 }
 
                 // Check argument types match parameter types
-                for (i, arg) in args.iter_mut().enumerate() {
+                for (i, arg) in args.iter().enumerate() {
                     if i < func_type.parameters.len() {
                         let param = &func_type.parameters[i];
 
                         // Infer the argument type
-                        if let Ok(arg_type) = self.infer_expression(&mut arg.value) {
+                        if let Ok(arg_type) = self.infer_expression(&arg.value) {
                             if let Some(param_type) = &param.type_annotation {
                                 // Check if argument type is assignable to parameter type
                                 if !TypeCompatibility::is_assignable(&arg_type, param_type) {
@@ -945,17 +888,17 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_method<'arena>(
+    fn infer_method(
         &self,
         obj_type: &Type<'arena>,
         method_name: &str,
-        _args: &[Argument],
+        _args: &[Argument<'arena>],
         span: Span,
     ) -> Result<Type<'arena>, TypeCheckError> {
         // Look up the method in the object type
         match &obj_type.kind {
             TypeKind::Object(obj) => {
-                for member in &obj.members {
+                for member in obj.members.iter() {
                     if let ObjectTypeMember::Method(method) = member {
                         if self.interner.resolve(method.name.node) == method_name {
                             // Return the return type of the method
@@ -985,7 +928,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_member<'arena>(
+    fn infer_member(
         &self,
         obj_type: &Type<'arena>,
         member: &str,
@@ -999,8 +942,8 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 if let Some(type_args) = &type_ref.type_arguments {
                     if let Some(generic_alias) = self.type_env.get_generic_type_alias(&type_name) {
                         // Instantiate the generic type alias with the provided type arguments
-                        use crate::types::generics::instantiate_type;
                         let instantiated = instantiate_type(
+                            self.arena,
                             &generic_alias.typ,
                             &generic_alias.type_parameters,
                             type_args,
@@ -1077,7 +1020,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             TypeKind::Object(obj) => {
                 // Find member in object type
                 let member_id = self.interner.intern(member);
-                for obj_member in &obj.members {
+                for obj_member in obj.members.iter() {
                     match obj_member {
                         ObjectTypeMember::Property(prop) => {
                             if prop.name.node == member_id {
@@ -1134,7 +1077,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
+    fn infer_index(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         match &obj_type.kind {
             TypeKind::Array(elem_type) => Ok((**elem_type).clone()),
             TypeKind::Tuple(types) => {
@@ -1151,12 +1094,13 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
+    fn make_optional(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), span);
-        Ok(Type::new(TypeKind::Union(vec![typ, nil_type]), span))
+        let types = self.arena.alloc_slice_fill_iter([typ, nil_type]);
+        Ok(Type::new(TypeKind::Union(types), span))
     }
 
-    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
+    fn remove_nil(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         match &typ.kind {
             TypeKind::Union(types) => {
                 let non_nil_types: Vec<Type<'arena>> =
@@ -1166,7 +1110,8 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 } else if non_nil_types.len() == 1 {
                     Ok(non_nil_types[0].clone())
                 } else {
-                    Ok(Type::new(TypeKind::Union(non_nil_types), span))
+                    let types = self.arena.alloc_slice_fill_iter(non_nil_types.into_iter());
+                    Ok(Type::new(TypeKind::Union(types), span))
                 }
             }
             _ => {
@@ -1179,7 +1124,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn is_nil<'arena>(&self, typ: &Type<'arena>) -> bool {
+    fn is_nil(&self, typ: &Type<'arena>) -> bool {
         match &typ.kind {
             TypeKind::Primitive(PrimitiveType::Nil) => true,
             TypeKind::Literal(Literal::Nil) => true,
@@ -1188,7 +1133,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_null_coalesce<'arena>(
+    fn infer_null_coalesce(
         &self,
         left: &Type<'arena>,
         right: &Type<'arena>,
@@ -1214,11 +1159,11 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
     }
 
     #[instrument(skip(self, match_expr), fields(arms = match_expr.arms.len()))]
-    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn check_match(&mut self, match_expr: &MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         debug!(span = ?match_expr.span, "Checking match expression");
 
         // Type check the value being matched
-        let value_type = self.infer_expression(&mut match_expr.value)?;
+        let value_type = self.infer_expression(&match_expr.value)?;
         debug!(value_type = ?value_type.kind, "Matched value type");
 
         if match_expr.arms.is_empty() {
@@ -1238,7 +1183,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         // Type check each arm and collect result types
         let mut arm_types = Vec::new();
 
-        for arm in match_expr.arms.iter_mut() {
+        for arm in match_expr.arms.iter() {
             // Enter a new scope for this arm
             self.symbol_table.enter_scope();
 
@@ -1249,7 +1194,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             let _narrowed_type = self.narrow_type_by_pattern(&arm.pattern, &value_type)?;
 
             // Check the guard if present
-            if let Some(guard) = &mut arm.guard {
+            if let Some(guard) = &arm.guard {
                 let guard_type = self.infer_expression(guard)?;
                 // Guard should be boolean (primitive or literal)
                 let is_boolean =
@@ -1265,11 +1210,11 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
             }
 
             // Check the arm body
-            let arm_type = match &mut arm.body {
+            let arm_type = match &arm.body {
                 MatchArmBody::Expression(expr) => self.infer_expression(expr)?,
                 MatchArmBody::Block(block) => {
                     // Type check the block
-                    for _stmt in &mut block.statements {
+                    for _stmt in block.statements.iter() {
                         // For now, we can't easily check statements here
                         // This would require access to the full type checker
                     }
@@ -1293,34 +1238,33 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
 
         // Find the common type or create a union
-        let mut result_type = arm_types[0].clone();
+        let mut union_types = vec![arm_types[0].clone()];
         for arm_type in &arm_types[1..] {
-            if TypeCompatibility::is_assignable(&result_type, arm_type) {
-                // Keep result_type
-            } else if TypeCompatibility::is_assignable(arm_type, &result_type) {
-                result_type = arm_type.clone();
+            if TypeCompatibility::is_assignable(&union_types[0], arm_type) {
+                // Keep first type
+            } else if TypeCompatibility::is_assignable(arm_type, &union_types[0]) {
+                union_types[0] = arm_type.clone();
             } else {
-                // Types are incompatible, create a union
-                match &mut result_type.kind {
-                    TypeKind::Union(types) => {
-                        types.push(arm_type.clone());
-                    }
-                    _ => {
-                        result_type = Type::new(
-                            TypeKind::Union(vec![result_type.clone(), arm_type.clone()]),
-                            match_expr.span,
-                        );
-                    }
+                // Types are incompatible, add to union
+                if !union_types.iter().any(|t| TypeCompatibility::is_assignable(t, arm_type)) {
+                    union_types.push(arm_type.clone());
                 }
             }
         }
 
+        let result_type = if union_types.len() == 1 {
+            union_types.into_iter().next().unwrap()
+        } else {
+            let types = self.arena.alloc_slice_fill_iter(union_types.into_iter());
+            Type::new(TypeKind::Union(types), match_expr.span)
+        };
+
         Ok(result_type)
     }
 
-    fn check_pattern<'arena>(
+    fn check_pattern(
         &mut self,
-        pattern: &Pattern,
+        pattern: &Pattern<'arena>,
         expected_type: &Type<'arena>,
     ) -> Result<(), TypeCheckError> {
         match pattern {
@@ -1389,10 +1333,10 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 // Expected type should be an array
                 match &expected_type.kind {
                     TypeKind::Array(elem_type) => {
-                        for elem in &array_pattern.elements {
+                        for elem in array_pattern.elements.iter() {
                             match elem {
                                 ArrayPatternElement::Pattern(pat) => {
-                                    self.check_pattern(pat, elem_type)?;
+                                    self.check_pattern(pat, *elem_type)?;
                                 }
                                 ArrayPatternElement::Rest(ident) => {
                                     // Rest pattern gets the array type
@@ -1426,7 +1370,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                 // Extract property types from the expected object type
                 match &expected_type.kind {
                     TypeKind::Object(obj_type) => {
-                        for prop in &object_pattern.properties {
+                        for prop in object_pattern.properties.iter() {
                             // Find the property type in the object
                             let prop_type = obj_type
                                 .members
@@ -1466,7 +1410,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
                     _ => {
                         // If it's not an object type, accept any object pattern for now
                         // This handles cases like Table type
-                        for prop in &object_pattern.properties {
+                        for prop in object_pattern.properties.iter() {
                             let prop_type =
                                 Type::new(TypeKind::Primitive(PrimitiveType::Unknown), prop.span);
 
@@ -1504,12 +1448,12 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
     }
 }
 
-impl TypeInferrer<'_> {
+impl<'a, 'arena> TypeInferrer<'a, 'arena> {
     /// Check if a type contains unresolved type parameters (References that aren't
     /// known types, interfaces, or classes). Used to guard the access_control fallback
     /// in infer_member so we don't return raw type annotations with unsubstituted
     /// type parameters from generic classes.
-    fn type_has_unresolved_params<'arena>(&self, ty: &Type<'arena>) -> bool {
+    fn type_has_unresolved_params(&self, ty: &Type<'arena>) -> bool {
         match &ty.kind {
             TypeKind::Reference(type_ref) => {
                 let name = self.interner.resolve(type_ref.name.node);
@@ -1528,7 +1472,7 @@ impl TypeInferrer<'_> {
 
     /// Check if a type has an operator overload for the given binary operation.
     /// Returns the operator's return type if found.
-    fn check_operator_overload<'arena>(&self, operand_type: &Type<'arena>, op: BinaryOp) -> Option<Type<'arena>> {
+    fn check_operator_overload(&self, operand_type: &Type<'arena>, op: BinaryOp) -> Option<Type<'arena>> {
         let op_kind = match op {
             BinaryOp::Add => OperatorKind::Add,
             BinaryOp::Subtract => OperatorKind::Subtract,
@@ -1577,11 +1521,11 @@ impl TypeInferrer<'_> {
     }
 
     /// Extract all variable bindings from a pattern
-    fn extract_pattern_bindings<'arena>(
+    fn extract_pattern_bindings(
         &self,
-        pattern: &Pattern,
+        pattern: &Pattern<'arena>,
         expected_type: &Type<'arena>,
-    ) -> Result<PatternBindings, TypeCheckError> {
+    ) -> Result<PatternBindings<'arena>, TypeCheckError> {
         let mut bindings = PatternBindings {
             bindings: FxHashMap::default(),
         };
@@ -1590,11 +1534,11 @@ impl TypeInferrer<'_> {
     }
 
     /// Recursive helper for extracting bindings from a pattern
-    fn extract_pattern_bindings_recursive<'arena>(
+    fn extract_pattern_bindings_recursive(
         &self,
-        pattern: &Pattern,
+        pattern: &Pattern<'arena>,
         expected_type: &Type<'arena>,
-        bindings: &mut PatternBindings,
+        bindings: &mut PatternBindings<'arena>,
     ) -> Result<(), TypeCheckError> {
         match pattern {
             Pattern::Identifier(ident) => {
@@ -1609,22 +1553,22 @@ impl TypeInferrer<'_> {
             }
             Pattern::Array(array_pattern) => {
                 // Extract element type and recurse into elements
-                let elem_type_box: Box<Type> = match &expected_type.kind {
-                    TypeKind::Array(et) => et.clone(),
+                let elem_type = match &expected_type.kind {
+                    TypeKind::Array(et) => (*et).clone(),
                     _ => {
                         // If expected type is not an array, use Unknown as element type
                         // This allows us to extract bindings even when type info is incomplete
-                        Box::new(Type::new(
+                        Type::new(
                             TypeKind::Primitive(PrimitiveType::Unknown),
                             expected_type.span,
-                        ))
+                        )
                     }
                 };
 
-                for elem in &array_pattern.elements {
+                for elem in array_pattern.elements.iter() {
                     match elem {
                         ArrayPatternElement::Pattern(pat) => {
-                            self.extract_pattern_bindings_recursive(pat, &elem_type_box, bindings)?;
+                            self.extract_pattern_bindings_recursive(pat, &elem_type, bindings)?;
                         }
                         ArrayPatternElement::Rest(ident) => {
                             let name = self.interner.resolve(ident.node).to_string();
@@ -1643,7 +1587,7 @@ impl TypeInferrer<'_> {
             }
             Pattern::Object(object_pattern) => {
                 // Extract property types and recurse
-                for prop in &object_pattern.properties {
+                for prop in object_pattern.properties.iter() {
                     let prop_type = match &expected_type.kind {
                         TypeKind::Object(obj_type) => obj_type
                             .members
@@ -1699,11 +1643,11 @@ impl TypeInferrer<'_> {
     }
 
     /// Validate that all alternatives in an or-pattern bind the same variables with compatible types
-    fn validate_or_pattern_bindings<'arena>(
+    fn validate_or_pattern_bindings(
         &self,
-        or_pattern: &typedlua_parser::ast::pattern::OrPattern,
+        or_pattern: &typedlua_parser::ast::pattern::OrPattern<'arena>,
         expected_type: &Type<'arena>,
-    ) -> Result<PatternBindings, TypeCheckError> {
+    ) -> Result<PatternBindings<'arena>, TypeCheckError> {
         use rustc_hash::FxHashSet;
 
         if or_pattern.alternatives.is_empty() {
@@ -1933,7 +1877,7 @@ impl TypeInferrer<'_> {
     }
 
     /// Check for unreachable patterns in match arms
-    fn check_unreachable_patterns(&self, arms: &[MatchArm]) {
+    fn check_unreachable_patterns(&self, arms: &[MatchArm<'arena>]) {
         for (i, arm) in arms.iter().enumerate() {
             // Skip checking arms with guards - they may not match
             if arm.guard.is_some() {
@@ -1995,14 +1939,14 @@ impl TypeInferrer<'_> {
 
     /// Check if match arms are exhaustive for the given type
     /// Helper to collect all literals from a pattern, including those in or-patterns
-    fn collect_pattern_literals<'a>(&self, pattern: &'a Pattern, literals: &mut Vec<&'a Literal>) {
+    fn collect_pattern_literals<'b>(&self, pattern: &'b Pattern<'arena>, literals: &mut Vec<&'b Literal>) {
         match pattern {
             Pattern::Literal(lit, _) => {
                 literals.push(lit);
             }
             Pattern::Or(or_pattern) => {
                 // Recursively collect from all alternatives
-                for alt in &or_pattern.alternatives {
+                for alt in or_pattern.alternatives.iter() {
                     self.collect_pattern_literals(alt, literals);
                 }
             }
@@ -2010,9 +1954,9 @@ impl TypeInferrer<'_> {
         }
     }
 
-    fn check_exhaustiveness<'arena>(
+    fn check_exhaustiveness(
         &self,
-        arms: &[MatchArm],
+        arms: &[MatchArm<'arena>],
         value_type: &Type<'arena>,
         span: Span,
     ) -> Result<(), TypeCheckError> {
@@ -2081,7 +2025,7 @@ impl TypeInferrer<'_> {
             TypeKind::Union(types) => {
                 // For unions, we need to cover all union members
                 // This is a simplified check - we verify that each union member has a potential match
-                for union_type in types {
+                for union_type in types.iter() {
                     let covered = arms.iter().any(|arm| {
                         // Check if this arm could match this union member
                         self.pattern_could_match(&arm.pattern, union_type)
@@ -2123,7 +2067,7 @@ impl TypeInferrer<'_> {
     }
 
     /// Helper to check if a pattern could match a type
-    fn pattern_could_match<'arena>(&self, pattern: &Pattern, typ: &Type<'arena>) -> bool {
+    fn pattern_could_match(&self, pattern: &Pattern<'arena>, typ: &Type<'arena>) -> bool {
         match pattern {
             Pattern::Wildcard(_) | Pattern::Identifier(_) => true,
             Pattern::Literal(lit, _) => match &typ.kind {
@@ -2146,9 +2090,9 @@ impl TypeInferrer<'_> {
     }
 
     /// Narrow the type based on the pattern
-    fn narrow_type_by_pattern<'arena>(
+    fn narrow_type_by_pattern(
         &self,
-        pattern: &Pattern,
+        pattern: &Pattern<'arena>,
         typ: &Type<'arena>,
     ) -> Result<Type<'arena>, TypeCheckError> {
         match pattern {
@@ -2165,7 +2109,7 @@ impl TypeInferrer<'_> {
                 match &typ.kind {
                     TypeKind::Union(types) => {
                         // Find the array type in the union
-                        for t in types {
+                        for t in types.iter() {
                             if matches!(t.kind, TypeKind::Array(_) | TypeKind::Tuple(_)) {
                                 return Ok(t.clone());
                             }
@@ -2207,7 +2151,8 @@ impl TypeInferrer<'_> {
                         } else if matching_types.len() == 1 {
                             Ok(matching_types[0].clone())
                         } else {
-                            Ok(Type::new(TypeKind::Union(matching_types), typ.span))
+                            let types = self.arena.alloc_slice_fill_iter(matching_types.into_iter());
+                            Ok(Type::new(TypeKind::Union(types), typ.span))
                         }
                     }
                     _ => Ok(typ.clone()),
@@ -2217,7 +2162,7 @@ impl TypeInferrer<'_> {
                 // Narrow to union of all narrowed alternative types
                 let mut narrowed_types = Vec::new();
 
-                for alt in &or_pattern.alternatives {
+                for alt in or_pattern.alternatives.iter() {
                     let narrowed = self.narrow_type_by_pattern(alt, typ)?;
                     narrowed_types.push(narrowed);
                 }
@@ -2227,7 +2172,8 @@ impl TypeInferrer<'_> {
                     Ok(narrowed_types[0].clone())
                 } else {
                     // Different types - return union
-                    Ok(Type::new(TypeKind::Union(narrowed_types), typ.span))
+                    let types = self.arena.alloc_slice_fill_iter(narrowed_types.into_iter());
+                    Ok(Type::new(TypeKind::Union(types), typ.span))
                 }
             }
         }
@@ -2235,21 +2181,21 @@ impl TypeInferrer<'_> {
 
     /// Infer the return type from a block by collecting all return statements
     /// Returns None if no return statements are found (void function)
-    fn infer_block_return_type<'arena>(
+    fn infer_block_return_type(
         &mut self,
-        block: &mut Block<'arena>,
+        block: &Block<'arena>,
     ) -> Result<Option<Type<'arena>>, TypeCheckError> {
         self.infer_block_return_type_recursive(block)
     }
 
     /// Recursively collect return types from a block
-    fn infer_block_return_type_recursive<'arena>(
+    fn infer_block_return_type_recursive(
         &mut self,
-        block: &mut Block<'arena>,
+        block: &Block<'arena>,
     ) -> Result<Option<Type<'arena>>, TypeCheckError> {
         let mut return_types: Vec<Type<'arena>> = Vec::new();
 
-        for stmt in &mut block.statements {
+        for stmt in block.statements.iter() {
             match stmt {
                 Statement::Return(return_stmt) => {
                     // Infer the type of the return expression(s)
@@ -2261,17 +2207,16 @@ impl TypeInferrer<'_> {
                         ));
                     } else if return_stmt.values.len() == 1 {
                         // Single return value
-                        let mut expr = return_stmt.values[0].clone();
-                        let typ = self.infer_expression(&mut expr)?;
+                        let typ = self.infer_expression(&return_stmt.values[0])?;
                         return_types.push(typ);
                     } else {
                         // Multiple return values - create a tuple
                         let mut tuple_types = Vec::new();
-                        for expr in return_stmt.values.iter_mut() {
-                            let mut expr_copy: Expression = expr.clone();
-                            let typ = self.infer_expression(&mut expr_copy)?;
+                        for expr in return_stmt.values.iter() {
+                            let typ = self.infer_expression(expr)?;
                             tuple_types.push(typ);
                         }
+                        let tuple_types = self.arena.alloc_slice_fill_iter(tuple_types.into_iter());
                         return_types
                             .push(Type::new(TypeKind::Tuple(tuple_types), return_stmt.span));
                     }
@@ -2279,22 +2224,22 @@ impl TypeInferrer<'_> {
                 Statement::If(if_stmt) => {
                     // Check the then block
                     if let Some(then_type) =
-                        self.infer_block_return_type_recursive(&mut if_stmt.then_block)?
+                        self.infer_block_return_type_recursive(&if_stmt.then_block)?
                     {
                         return_types.push(then_type);
                     }
 
                     // Check else-if blocks
-                    for else_if in &mut if_stmt.else_ifs {
+                    for else_if in if_stmt.else_ifs.iter() {
                         if let Some(else_if_type) =
-                            self.infer_block_return_type_recursive(&mut else_if.block)?
+                            self.infer_block_return_type_recursive(&else_if.block)?
                         {
                             return_types.push(else_if_type);
                         }
                     }
 
                     // Check else block
-                    if let Some(else_block) = &mut if_stmt.else_block {
+                    if let Some(else_block) = &if_stmt.else_block {
                         if let Some(else_type) =
                             self.infer_block_return_type_recursive(else_block)?
                         {
@@ -2305,22 +2250,22 @@ impl TypeInferrer<'_> {
                 Statement::Try(try_stmt) => {
                     // Check try block
                     if let Some(try_type) =
-                        self.infer_block_return_type_recursive(&mut try_stmt.try_block)?
+                        self.infer_block_return_type_recursive(&try_stmt.try_block)?
                     {
                         return_types.push(try_type);
                     }
 
                     // Check catch blocks
-                    for catch in &mut try_stmt.catch_clauses {
+                    for catch in try_stmt.catch_clauses.iter() {
                         if let Some(catch_type) =
-                            self.infer_block_return_type_recursive(&mut catch.body)?
+                            self.infer_block_return_type_recursive(&catch.body)?
                         {
                             return_types.push(catch_type);
                         }
                     }
 
                     // Check finally block (though finally typically doesn't return)
-                    if let Some(finally) = &mut try_stmt.finally_block {
+                    if let Some(finally) = &try_stmt.finally_block {
                         if let Some(finally_type) =
                             self.infer_block_return_type_recursive(finally)?
                         {
@@ -2330,29 +2275,29 @@ impl TypeInferrer<'_> {
                 }
                 Statement::While(while_stmt) => {
                     if let Some(body_type) =
-                        self.infer_block_return_type_recursive(&mut while_stmt.body)?
+                        self.infer_block_return_type_recursive(&while_stmt.body)?
                     {
                         return_types.push(body_type);
                     }
                 }
                 Statement::Repeat(repeat_stmt) => {
                     if let Some(body_type) =
-                        self.infer_block_return_type_recursive(&mut repeat_stmt.body)?
+                        self.infer_block_return_type_recursive(&repeat_stmt.body)?
                     {
                         return_types.push(body_type);
                     }
                 }
-                Statement::For(for_stmt) => match &mut **for_stmt {
-                    typedlua_parser::ast::statement::ForStatement::Numeric(numeric) => {
+                Statement::For(for_stmt) => match *for_stmt {
+                    typedlua_parser::ast::statement::ForStatement::Numeric(ref numeric) => {
                         if let Some(body_type) =
-                            self.infer_block_return_type_recursive(&mut numeric.body)?
+                            self.infer_block_return_type_recursive(&numeric.body)?
                         {
                             return_types.push(body_type);
                         }
                     }
-                    typedlua_parser::ast::statement::ForStatement::Generic(generic) => {
+                    typedlua_parser::ast::statement::ForStatement::Generic(ref generic) => {
                         if let Some(body_type) =
-                            self.infer_block_return_type_recursive(&mut generic.body)?
+                            self.infer_block_return_type_recursive(&generic.body)?
                         {
                             return_types.push(body_type);
                         }
@@ -2372,6 +2317,7 @@ impl TypeInferrer<'_> {
         } else {
             // Multiple return types - try to find a common type
             // For now, create a union of all return types
+            let return_types = self.arena.alloc_slice_fill_iter(return_types.into_iter());
             Ok(Some(Type::new(TypeKind::Union(return_types), block.span)))
         }
     }

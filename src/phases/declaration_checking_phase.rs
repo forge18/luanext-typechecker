@@ -54,14 +54,14 @@ pub fn check_type_alias<'arena>(
     let alias_name = interner.resolve(alias.name.node).to_string();
 
     // Check if this is a generic type alias
-    if let Some(type_params) = &alias.type_parameters {
+    if let Some(type_params) = alias.type_parameters {
         // For generic type aliases, store the raw type annotation without
         // evaluating it — it may contain type parameters (e.g., keyof T)
         // that can only be resolved when instantiated with concrete arguments.
         type_env
             .register_generic_type_alias(
                 alias_name.clone(),
-                type_params.clone(),
+                type_params.to_vec(),
                 alias.type_annotation.clone(),
             )
             .map_err(|e| TypeCheckError::new(e, alias.span))?;
@@ -113,6 +113,7 @@ pub fn check_type_alias<'arena>(
 /// Returns `Ok(true)` if this is a rich enum that needs further checking by the caller,
 /// `Ok(false)` if it's a simple enum that was fully handled, or an error if checking fails.
 pub fn check_enum_declaration<'arena>(
+    arena: &'arena bumpalo::Bump,
     enum_decl: &EnumDeclaration<'arena>,
     type_env: &mut TypeEnvironment<'arena>,
     symbol_table: &mut SymbolTable<'arena>,
@@ -168,7 +169,7 @@ pub fn check_enum_declaration<'arena>(
     } else if variants.len() == 1 {
         variants.into_iter().next().unwrap()
     } else {
-        Type::new(TypeKind::Union(variants), enum_decl.span)
+        Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(variants.into_iter())), enum_decl.span)
     };
 
     type_env
@@ -204,10 +205,11 @@ pub fn check_enum_declaration<'arena>(
 ///
 /// Returns an error if validation or registration fails.
 pub fn check_interface_declaration<'arena>(
+    arena: &'arena bumpalo::Bump,
     iface: &InterfaceDeclaration<'arena>,
     type_env: &mut TypeEnvironment<'arena>,
     symbol_table: &mut SymbolTable<'arena>,
-    access_control: &mut AccessControl,
+    access_control: &mut AccessControl<'arena>,
     interner: &StringInterner,
 ) -> Result<(bool, Type<'arena>), TypeCheckError> {
     let iface_name = interner.resolve(iface.name.node).to_string();
@@ -216,7 +218,7 @@ pub fn check_interface_declaration<'arena>(
     access_control.register_class(&iface_name, None);
 
     // Register interface members for access control
-    for member in &iface.members {
+    for member in iface.members.iter() {
         let member_info = match member {
             InterfaceMember::Property(prop) => ClassMemberInfo {
                 name: interner.resolve(prop.name.node).to_string(),
@@ -232,7 +234,7 @@ pub fn check_interface_declaration<'arena>(
                 access: AccessModifier::Public,
                 _is_static: false,
                 kind: ClassMemberKind::Method {
-                    parameters: method.parameters.clone(),
+                    parameters: method.parameters.to_vec(),
                     return_type: Some(method.return_type.clone()),
                     is_abstract: false,
                 },
@@ -244,7 +246,7 @@ pub fn check_interface_declaration<'arena>(
     }
 
     // Handle generic interfaces
-    if let Some(type_params) = &iface.type_parameters {
+    if let Some(type_params) = iface.type_parameters {
         // Generic interface - register type parameters for later instantiation
         let param_names: Vec<String> = type_params
             .iter()
@@ -253,9 +255,7 @@ pub fn check_interface_declaration<'arena>(
         type_env.register_interface_type_params(iface_name.clone(), param_names);
 
         // Create placeholder object type with interface members
-        let obj_type = Type::new(
-            TypeKind::Object(ObjectType {
-                members: iface
+        let members_vec: Vec<ObjectTypeMember<'arena>> = iface
                     .members
                     .iter()
                     .map(|member| match member {
@@ -263,7 +263,10 @@ pub fn check_interface_declaration<'arena>(
                         InterfaceMember::Method(method) => ObjectTypeMember::Method(method.clone()),
                         InterfaceMember::Index(index) => ObjectTypeMember::Index(index.clone()),
                     })
-                    .collect(),
+                    .collect();
+        let obj_type = Type::new(
+            TypeKind::Object(ObjectType {
+                members: arena.alloc_slice_fill_iter(members_vec.into_iter()),
                 span: iface.span,
             }),
             iface.span,
@@ -300,7 +303,7 @@ pub fn check_interface_declaration<'arena>(
         .collect();
 
     // Handle extends clause - merge parent interface members
-    for parent_type in &iface.extends {
+    for parent_type in iface.extends.iter() {
         match &parent_type.kind {
             TypeKind::Reference(type_ref) => {
                 // Look up parent interface
@@ -308,7 +311,7 @@ pub fn check_interface_declaration<'arena>(
                 if let Some(parent_iface) = type_env.get_interface(&type_name) {
                     if let TypeKind::Object(parent_obj) = &parent_iface.kind {
                         // Add parent members first (so they can be overridden)
-                        for parent_member in &parent_obj.members {
+                        for parent_member in parent_obj.members.iter() {
                             // Check if member is overridden in child
                             let member_name = match parent_member {
                                 ObjectTypeMember::Property(p) => Some(&p.name.node),
@@ -351,7 +354,7 @@ pub fn check_interface_declaration<'arena>(
     // Create the interface type
     let iface_type = Type::new(
         TypeKind::Object(ObjectType {
-            members: members.clone(),
+            members: arena.alloc_slice_fill_iter(members.clone().into_iter()),
             span: iface.span,
         }),
         iface.span,
@@ -409,7 +412,7 @@ pub fn check_interface_declaration<'arena>(
 pub fn check_rich_enum_declaration<'arena>(
     enum_decl: &EnumDeclaration<'arena>,
     type_env: &mut TypeEnvironment<'arena>,
-    access_control: &mut AccessControl,
+    access_control: &mut AccessControl<'arena>,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, TypeCheckError> {
     use rustc_hash::FxHashMap;
@@ -420,7 +423,7 @@ pub fn check_rich_enum_declaration<'arena>(
     access_control.register_class(&enum_name, None);
 
     // Register enum fields as members for access control
-    for field in &enum_decl.fields {
+    for field in enum_decl.fields.iter() {
         let field_info = ClassMemberInfo {
             name: interner.resolve(field.name.node).to_string(),
             access: AccessModifier::Public,
@@ -462,7 +465,7 @@ pub fn check_rich_enum_declaration<'arena>(
     }
 
     // Register enum methods as members for access control
-    for method in &enum_decl.methods {
+    for method in enum_decl.methods.iter() {
         let method_name = interner.resolve(method.name.node).to_string();
         access_control.register_member(
             &enum_name,
@@ -471,7 +474,7 @@ pub fn check_rich_enum_declaration<'arena>(
                 access: AccessModifier::Public,
                 _is_static: false,
                 kind: ClassMemberKind::Method {
-                    parameters: method.parameters.clone(),
+                    parameters: method.parameters.to_vec(),
                     return_type: method.return_type.clone(),
                     is_abstract: false,
                 },
@@ -505,12 +508,12 @@ pub fn check_rich_enum_declaration<'arena>(
 ///
 /// Returns the class type for use in further checking.
 pub fn register_class_symbol<'arena>(
-    class_decl: &typedlua_parser::ast::statement::ClassDeclaration,
+    class_decl: &ClassDeclaration<'arena>,
     symbol_table: &mut SymbolTable<'arena>,
     type_env: &mut TypeEnvironment<'arena>,
     class_type_params: &mut rustc_hash::FxHashMap<
         String,
-        Vec<typedlua_parser::ast::statement::TypeParameter>,
+        Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>,
     >,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, TypeCheckError> {
@@ -539,8 +542,8 @@ pub fn register_class_symbol<'arena>(
     }
 
     // Store type parameters for this class (needed for generic override checking)
-    if let Some(type_params) = &class_decl.type_parameters {
-        class_type_params.insert(class_name, type_params.clone());
+    if let Some(type_params) = class_decl.type_parameters {
+        class_type_params.insert(class_name, type_params.to_vec());
     }
 
     Ok(class_type)
@@ -565,12 +568,12 @@ pub fn register_class_symbol<'arena>(
 pub fn extract_class_member_infos<'arena>(
     class_decl: &ClassDeclaration<'arena>,
     interner: &StringInterner,
-) -> Vec<ClassMemberInfo> {
+) -> Vec<ClassMemberInfo<'arena>> {
     use crate::helpers::type_utilities::operator_kind_name;
     let mut member_infos = Vec::new();
 
     // Add regular class members
-    for member in &class_decl.members {
+    for member in class_decl.members.iter() {
         match member {
             ClassMember::Property(prop) => {
                 member_infos.push(ClassMemberInfo {
@@ -589,7 +592,7 @@ pub fn extract_class_member_infos<'arena>(
                     access: method.access.unwrap_or(AccessModifier::Public),
                     _is_static: method.is_static,
                     kind: ClassMemberKind::Method {
-                        parameters: method.parameters.clone(),
+                        parameters: method.parameters.to_vec(),
                         return_type: method.return_type.clone(),
                         is_abstract: method.is_abstract,
                     },
@@ -631,7 +634,7 @@ pub fn extract_class_member_infos<'arena>(
                     _is_static: false,
                     kind: ClassMemberKind::Operator {
                         operator: op.operator,
-                        parameters: op.parameters.clone(),
+                        parameters: op.parameters.to_vec(),
                         return_type: op.return_type.clone(),
                     },
                     is_final: false,
@@ -733,8 +736,8 @@ pub fn register_class_type_parameters(
 pub fn register_class_implements<'arena>(
     class_name: String,
     implements: Vec<Type<'arena>>,
-    type_env: &mut crate::core::type_environment::TypeEnvironment,
-    access_control: &mut crate::visitors::AccessControl,
+    type_env: &mut crate::core::type_environment::TypeEnvironment<'arena>,
+    access_control: &mut crate::visitors::AccessControl<'arena>,
     interner: &StringInterner,
 ) {
     if implements.is_empty() {
@@ -773,9 +776,9 @@ pub fn register_class_implements<'arena>(
 ///
 /// Returns `Ok(())` if successful, or an error if duplicate parameters are found
 /// or registration fails.
-pub fn register_function_type_parameters(
-    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
-    type_env: &mut crate::core::type_environment::TypeEnvironment,
+pub fn register_function_type_parameters<'arena>(
+    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter<'arena>]>,
+    type_env: &mut crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<(), crate::TypeCheckError> {
     let Some(type_params) = type_params else {
@@ -840,41 +843,54 @@ pub fn register_function_type_parameters(
 /// # Returns
 ///
 /// Returns the instantiated interface type with all type parameters replaced.
-pub fn instantiate_generic_interface<F>(
+pub fn instantiate_generic_interface<'arena, F>(
+    arena: &'arena bumpalo::Bump,
     interface: Type<'arena>,
-    type_args: &Vec<Type<'arena>>,
+    type_args: &[Type<'arena>],
     interface_name: &str,
     substitute_fn: F,
-) -> Type
+) -> Type<'arena>
 where
-    F: Fn(&Type<'arena>, &Vec<Type<'arena>>, &str) -> Type<'arena>,
+    F: Fn(&Type<'arena>, &[Type<'arena>], &str) -> Type<'arena>,
 {
-    let mut instantiated_iface = interface.clone();
-    if let TypeKind::Object(ref mut obj) = instantiated_iface.kind {
-        // Build substitution map from interface type params
-        // For generic interfaces, we stored the raw type with references to T
-        // We need to substitute T -> type_arg for each type param
-        for member in &mut obj.members {
+    if let TypeKind::Object(obj) = &interface.kind {
+        use typedlua_parser::ast::statement::{MethodSignature, PropertySignature};
+        let new_members: Vec<ObjectTypeMember<'arena>> = obj.members.iter().map(|member| {
             match member {
                 ObjectTypeMember::Method(method) => {
-                    // Substitute return type
-                    method.return_type =
-                        substitute_fn(&method.return_type, type_args, interface_name);
-                    // Substitute parameter types
-                    for param in &mut method.parameters {
-                        if let Some(ref type_ann) = param.type_annotation {
-                            param.type_annotation =
-                                Some(substitute_fn(type_ann, type_args, interface_name));
+                    let new_return_type = substitute_fn(&method.return_type, type_args, interface_name);
+                    let new_params: Vec<_> = method.parameters.iter().map(|param| {
+                        let new_type_ann = param.type_annotation.as_ref()
+                            .map(|t| substitute_fn(t, type_args, interface_name));
+                        typedlua_parser::ast::statement::Parameter {
+                            type_annotation: new_type_ann,
+                            ..param.clone()
                         }
-                    }
+                    }).collect();
+                    ObjectTypeMember::Method(MethodSignature {
+                        parameters: arena.alloc_slice_fill_iter(new_params.into_iter()),
+                        return_type: new_return_type,
+                        ..method.clone()
+                    })
                 }
                 ObjectTypeMember::Property(prop) => {
-                    prop.type_annotation =
-                        substitute_fn(&prop.type_annotation, type_args, interface_name);
+                    let new_type = substitute_fn(&prop.type_annotation, type_args, interface_name);
+                    ObjectTypeMember::Property(PropertySignature {
+                        type_annotation: new_type,
+                        ..prop.clone()
+                    })
                 }
-                ObjectTypeMember::Index(_) => {}
+                other => other.clone(),
             }
-        }
+        }).collect();
+        Type::new(
+            TypeKind::Object(ObjectType {
+                members: arena.alloc_slice_fill_iter(new_members.into_iter()),
+                span: obj.span,
+            }),
+            interface.span,
+        )
+    } else {
+        interface
     }
-    instantiated_iface
 }

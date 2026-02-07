@@ -10,18 +10,21 @@ mod tests {
     use typedlua_parser::ast::types::*;
     use typedlua_parser::ast::Ident;
     use typedlua_parser::prelude::*;
+    use bumpalo::Bump;
     use typedlua_parser::span::Span;
     use typedlua_parser::string_interner::StringInterner;
 
-    fn create_test_inferrer<'a>(
-        symbol_table: &'a mut SymbolTable,
-        type_env: &'a mut TypeEnvironment,
-        narrowing_context: &'a mut NarrowingContext,
-        access_control: &'a AccessControl,
+    fn create_test_inferrer<'a, 'arena>(
+        arena: &'arena Bump,
+        symbol_table: &'a mut SymbolTable<'arena>,
+        type_env: &'a mut TypeEnvironment<'arena>,
+        narrowing_context: &'a mut NarrowingContext<'arena>,
+        access_control: &'a AccessControl<'arena>,
         interner: &'a StringInterner,
         diagnostic_handler: &'a Arc<dyn DiagnosticHandler>,
-    ) -> TypeInferrer<'a> {
+    ) -> TypeInferrer<'a, 'arena> {
         TypeInferrer::new(
+            arena,
             symbol_table,
             type_env,
             narrowing_context,
@@ -33,6 +36,7 @@ mod tests {
 
     #[test]
     fn test_infer_literal_number() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -42,6 +46,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -50,14 +55,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Literal(Literal::Number(42.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Literal(Literal::Number(n)) if n == 42.0));
@@ -65,6 +70,7 @@ mod tests {
 
     #[test]
     fn test_infer_literal_string() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -75,6 +81,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -83,14 +90,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Literal(Literal::String("hello".to_string())),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Literal(Literal::String(_))));
@@ -98,6 +105,7 @@ mod tests {
 
     #[test]
     fn test_infer_literal_boolean() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -108,6 +116,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -116,14 +125,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -134,6 +143,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_add() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -144,6 +154,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -152,27 +163,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(1.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Add, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -183,6 +194,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_concat() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -193,6 +205,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -201,27 +214,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::String("hello".to_string())),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::String(" world".to_string())),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Concatenate, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -232,6 +245,7 @@ mod tests {
 
     #[test]
     fn test_infer_unary_op_negate() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -242,6 +256,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -250,21 +265,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let operand = Box::new(Expression {
+        let operand = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Unary(UnaryOp::Negate, operand),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -275,6 +290,7 @@ mod tests {
 
     #[test]
     fn test_infer_unary_op_not() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -285,6 +301,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -293,21 +310,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let operand = Box::new(Expression {
+        let operand = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Unary(UnaryOp::Not, operand),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -318,6 +335,7 @@ mod tests {
 
     #[test]
     fn test_infer_array() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -328,6 +346,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -336,7 +355,7 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let elements = vec![
+        let elements = arena.alloc_slice_fill_iter([
             ArrayElement::Expression(Expression {
                 kind: ExpressionKind::Literal(Literal::Number(1.0)),
                 span: Span::default(),
@@ -349,16 +368,16 @@ mod tests {
                 annotated_type: None,
                 receiver_class: None,
             }),
-        ];
+        ]);
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Array(elements),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Array(_)));
@@ -366,6 +385,7 @@ mod tests {
 
     #[test]
     fn test_infer_empty_array() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -376,6 +396,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -384,14 +405,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
-            kind: ExpressionKind::Array(vec![]),
+        let expr = Expression {
+            kind: ExpressionKind::Array(&[]),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Array(_)));
@@ -399,6 +420,7 @@ mod tests {
 
     #[test]
     fn test_infer_conditional() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -409,6 +431,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -417,33 +440,33 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let cond = Box::new(Expression {
+        let cond = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let then_expr = Box::new(Expression {
+        let then_expr = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(1.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let else_expr = Box::new(Expression {
+        let else_expr = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Conditional(cond, then_expr, else_expr),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Conditional with different literal numbers returns a union
@@ -452,6 +475,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_comparison() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -462,6 +486,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -470,27 +495,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(1.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::LessThan, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -501,6 +526,7 @@ mod tests {
 
     #[test]
     fn test_visitor_name() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -510,6 +536,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -527,6 +554,7 @@ mod tests {
 
     #[test]
     fn test_infer_literal_nil() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -537,6 +565,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -545,14 +574,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Literal(Literal::Nil),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Literal(Literal::Nil)));
@@ -560,6 +589,7 @@ mod tests {
 
     #[test]
     fn test_infer_array_expression() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -570,6 +600,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -579,8 +610,8 @@ mod tests {
         );
 
         // Array of numbers: [1, 2, 3]
-        let mut expr = Expression {
-            kind: ExpressionKind::Array(vec![
+        let expr = Expression {
+            kind: ExpressionKind::Array(arena.alloc_slice_fill_iter([
                 ArrayElement::Expression(Expression {
                     kind: ExpressionKind::Literal(Literal::Number(1.0)),
                     span: Span::default(),
@@ -599,13 +630,13 @@ mod tests {
                     annotated_type: None,
                     receiver_class: None,
                 }),
-            ]),
+            ])),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Should infer as Array<number>
@@ -614,6 +645,7 @@ mod tests {
 
     #[test]
     fn test_infer_array_empty() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -624,6 +656,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -633,14 +666,14 @@ mod tests {
         );
 
         // Empty array: []
-        let mut expr = Expression {
-            kind: ExpressionKind::Array(vec![]),
+        let expr = Expression {
+            kind: ExpressionKind::Array(&[]),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Should infer as Array<unknown>
@@ -649,6 +682,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_sub() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -659,6 +693,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -667,27 +702,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(10.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(3.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Subtract, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -698,6 +733,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_mul() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -708,6 +744,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -716,27 +753,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(6.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(7.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Multiply, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -747,6 +784,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_div() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -757,6 +795,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -765,27 +804,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(10.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Divide, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -796,6 +835,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_mod() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -806,6 +846,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -814,27 +855,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(10.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(3.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Modulo, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -845,6 +886,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_eq() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -855,6 +897,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -863,27 +906,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Equal, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -894,6 +937,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_and() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -904,6 +948,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -912,27 +957,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(false)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::And, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // In Lua, 'and' returns one of its operands, so type is Unknown
@@ -944,6 +989,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_or() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -954,6 +1000,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -962,27 +1009,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(false)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Or, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // In Lua, 'or' returns one of its operands, so type is Unknown
@@ -994,6 +1041,7 @@ mod tests {
 
     #[test]
     fn test_infer_unary_op_len() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1004,6 +1052,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1012,21 +1061,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let operand = Box::new(Expression {
+        let operand = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::String("hello".to_string())),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Unary(UnaryOp::Length, operand),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Length operator returns number
@@ -1038,6 +1087,7 @@ mod tests {
 
     #[test]
     fn test_infer_parenthesized() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1048,6 +1098,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1056,21 +1107,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let inner = Box::new(Expression {
+        let inner = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(42.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Parenthesized(inner),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Parenthesized expressions now correctly infer the type of their inner expression
@@ -1081,6 +1132,7 @@ mod tests {
 
     #[test]
     fn test_infer_type_assertion() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1091,6 +1143,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1099,7 +1152,7 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let inner = Box::new(Expression {
+        let inner = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(42.0)),
             span: Span::default(),
             annotated_type: None,
@@ -1111,14 +1164,14 @@ mod tests {
             span: Span::default(),
         };
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::TypeAssertion(inner, assert_type),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Type assertions currently return Unknown (not yet fully implemented)
@@ -1130,6 +1183,7 @@ mod tests {
 
     #[test]
     fn test_infer_object_expression() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1140,6 +1194,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1152,11 +1207,11 @@ mod tests {
         let name_id = interner.intern("x");
         let y_id = interner.intern("y");
 
-        let mut expr = Expression {
-            kind: ExpressionKind::Object(vec![
+        let expr = Expression {
+            kind: ExpressionKind::Object(arena.alloc_slice_fill_iter([
                 ObjectProperty::Property {
                     key: Ident::new(name_id, Span::default()),
-                    value: Box::new(Expression {
+                    value: &*arena.alloc(Expression {
                         kind: ExpressionKind::Literal(Literal::Number(1.0)),
                         span: Span::default(),
                         annotated_type: None,
@@ -1166,7 +1221,7 @@ mod tests {
                 },
                 ObjectProperty::Property {
                     key: Ident::new(y_id, Span::default()),
-                    value: Box::new(Expression {
+                    value: &*arena.alloc(Expression {
                         kind: ExpressionKind::Literal(Literal::Number(2.0)),
                         span: Span::default(),
                         annotated_type: None,
@@ -1174,13 +1229,13 @@ mod tests {
                     }),
                     span: Span::default(),
                 },
-            ]),
+            ])),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Should infer as object type
@@ -1189,6 +1244,7 @@ mod tests {
 
     #[test]
     fn test_infer_identifier_not_found() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1199,6 +1255,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1208,20 +1265,21 @@ mod tests {
         );
 
         let x_id = interner.intern("x");
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Identifier(x_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         // Should fail because x is not defined
         assert!(result.is_err());
     }
 
     #[test]
     fn test_infer_identifier_with_type() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1247,6 +1305,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1255,14 +1314,14 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Identifier(x_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1273,6 +1332,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_power() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1283,6 +1343,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1291,27 +1352,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(3.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::Power, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1322,6 +1383,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_integer_divide() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1332,6 +1394,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1340,27 +1403,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(10.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(3.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::IntegerDivide, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1371,6 +1434,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_bitwise() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1381,6 +1445,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1389,27 +1454,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(3.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::BitwiseAnd, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1420,6 +1485,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_shift() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1430,6 +1496,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1438,27 +1505,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(1.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::ShiftLeft, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1469,6 +1536,7 @@ mod tests {
 
     #[test]
     fn test_infer_binary_op_not_equal() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1479,6 +1547,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1487,27 +1556,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(1.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(2.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::NotEqual, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -1518,6 +1587,7 @@ mod tests {
 
     #[test]
     fn test_infer_null_coalesce() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1528,6 +1598,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1536,27 +1607,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Nil),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(42.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Binary(BinaryOp::NullCoalesce, left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // null ?? number should return number
@@ -1568,6 +1639,7 @@ mod tests {
 
     #[test]
     fn test_infer_optional_member() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1580,7 +1652,7 @@ mod tests {
         let obj_id = interner.intern("obj");
         let obj_type = Type {
             kind: TypeKind::Object(ObjectType {
-                members: vec![ObjectTypeMember::Property(PropertySignature {
+                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(PropertySignature {
                     is_readonly: false,
                     name: Ident::new(interner.intern("prop"), Span::default()),
                     is_optional: false,
@@ -1589,7 +1661,7 @@ mod tests {
                         Span::default(),
                     ),
                     span: Span::default(),
-                })],
+                })]),
                 span: Span::default(),
             }),
             span: Span::default(),
@@ -1605,6 +1677,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1613,7 +1686,7 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let obj = Box::new(Expression {
+        let obj = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(obj_id),
             span: Span::default(),
             annotated_type: None,
@@ -1621,14 +1694,14 @@ mod tests {
         });
         let member = typedlua_parser::ast::Spanned::new(interner.intern("prop"), Span::default());
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::OptionalMember(obj, member),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         // Should return an optional type (T | nil)
         assert!(result.is_ok());
         let typ = result.unwrap();
@@ -1637,6 +1710,7 @@ mod tests {
 
     #[test]
     fn test_infer_optional_index() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1648,7 +1722,7 @@ mod tests {
 
         let arr_id = interner.intern("arr");
         let arr_type = Type {
-            kind: TypeKind::Array(Box::new(Type::new(
+            kind: TypeKind::Array(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 Span::default(),
             ))),
@@ -1665,6 +1739,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1673,27 +1748,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let obj = Box::new(Expression {
+        let obj = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(arr_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let index = Box::new(Expression {
+        let index = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(0.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::OptionalIndex(obj, index),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Should return an optional type (T | nil)
@@ -1702,6 +1777,7 @@ mod tests {
 
     #[test]
     fn test_infer_optional_call() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1715,8 +1791,8 @@ mod tests {
         let func_type = Type {
             kind: TypeKind::Function(FunctionType {
                 type_parameters: None,
-                parameters: vec![],
-                return_type: Box::new(Type::new(
+                parameters: &[],
+                return_type: &*arena.alloc(Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
                     Span::default(),
                 )),
@@ -1736,6 +1812,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1744,21 +1821,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let callee = Box::new(Expression {
+        let callee = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(func_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
-            kind: ExpressionKind::OptionalCall(callee, vec![], None),
+        let expr = Expression {
+            kind: ExpressionKind::OptionalCall(callee, &[], None),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Should return an optional type
@@ -1767,6 +1844,7 @@ mod tests {
 
     #[test]
     fn test_infer_function_expression() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1777,6 +1855,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1785,13 +1864,13 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Function(FunctionExpression {
                 type_parameters: None,
-                parameters: vec![],
+                parameters: &[],
                 return_type: None,
                 body: Block {
-                    statements: vec![],
+                    statements: &[],
                     span: Span::default(),
                 },
                 span: Span::default(),
@@ -1801,7 +1880,7 @@ mod tests {
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Function(_)));
@@ -1809,6 +1888,7 @@ mod tests {
 
     #[test]
     fn test_infer_function_expression_with_return() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1819,6 +1899,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1827,13 +1908,13 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Function(FunctionExpression {
                 type_parameters: None,
-                parameters: vec![],
+                parameters: &[],
                 return_type: None,
                 body: Block {
-                    statements: vec![],
+                    statements: &[],
                     span: Span::default(),
                 },
                 span: Span::default(),
@@ -1843,7 +1924,7 @@ mod tests {
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Function(_)));
@@ -1851,6 +1932,7 @@ mod tests {
 
     #[test]
     fn test_infer_arrow_function_basic() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1861,6 +1943,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1869,10 +1952,10 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Arrow(ArrowFunction {
-                parameters: vec![],
-                body: ArrowBody::Expression(Box::new(Expression {
+                parameters: &[],
+                body: ArrowBody::Expression(&*arena.alloc(Expression {
                     kind: ExpressionKind::Literal(Literal::Number(1.0)),
                     span: Span::default(),
                     annotated_type: None,
@@ -1886,12 +1969,13 @@ mod tests {
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_infer_object_spread() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1904,7 +1988,7 @@ mod tests {
         let other_id = interner.intern("other");
         let other_type = Type {
             kind: TypeKind::Object(ObjectType {
-                members: vec![ObjectTypeMember::Property(PropertySignature {
+                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(PropertySignature {
                     is_readonly: false,
                     name: Ident::new(interner.intern("a"), Span::default()),
                     is_optional: false,
@@ -1913,7 +1997,7 @@ mod tests {
                         Span::default(),
                     ),
                     span: Span::default(),
-                })],
+                })]),
                 span: Span::default(),
             }),
             span: Span::default(),
@@ -1929,6 +2013,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1939,10 +2024,10 @@ mod tests {
 
         let obj_x = interner.intern("x");
 
-        let mut expr = Expression {
-            kind: ExpressionKind::Object(vec![
+        let expr = Expression {
+            kind: ExpressionKind::Object(arena.alloc_slice_fill_iter([
                 ObjectProperty::Spread {
-                    value: Box::new(Expression {
+                    value: &*arena.alloc(Expression {
                         kind: ExpressionKind::Identifier(other_id),
                         span: Span::default(),
                         annotated_type: None,
@@ -1952,7 +2037,7 @@ mod tests {
                 },
                 ObjectProperty::Property {
                     key: Ident::new(obj_x, Span::default()),
-                    value: Box::new(Expression {
+                    value: &*arena.alloc(Expression {
                         kind: ExpressionKind::Literal(Literal::Number(42.0)),
                         span: Span::default(),
                         annotated_type: None,
@@ -1960,13 +2045,13 @@ mod tests {
                     }),
                     span: Span::default(),
                 },
-            ]),
+            ])),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(typ.kind, TypeKind::Object(_)));
@@ -1974,6 +2059,7 @@ mod tests {
 
     #[test]
     fn test_infer_try_expression() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -1984,6 +2070,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -1992,16 +2079,16 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Try(TryExpression {
-                expression: Box::new(Expression {
+                expression: &*arena.alloc(Expression {
                     kind: ExpressionKind::Literal(Literal::Number(1.0)),
                     span: Span::default(),
                     annotated_type: None,
                     receiver_class: None,
                 }),
                 catch_variable: Ident::new(interner.intern("e"), Span::default()),
-                catch_expression: Box::new(Expression {
+                catch_expression: &*arena.alloc(Expression {
                     kind: ExpressionKind::Literal(Literal::String("error".to_string())),
                     span: Span::default(),
                     annotated_type: None,
@@ -2014,7 +2101,7 @@ mod tests {
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Try should return union of both types
@@ -2023,6 +2110,7 @@ mod tests {
 
     #[test]
     fn test_infer_error_chain() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -2048,6 +2136,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -2056,32 +2145,33 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(result_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Nil),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::ErrorChain(left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_infer_pipe_expression() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -2095,8 +2185,8 @@ mod tests {
         let double_type = Type {
             kind: TypeKind::Function(FunctionType {
                 type_parameters: None,
-                parameters: vec![],
-                return_type: Box::new(Type::new(
+                parameters: &[],
+                return_type: &*arena.alloc(Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
                     Span::default(),
                 )),
@@ -2116,6 +2206,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -2124,32 +2215,33 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let left = Box::new(Expression {
+        let left = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let right = Box::new(Expression {
+        let right = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(double_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Pipe(left, right),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_infer_index_on_tuple() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -2161,10 +2253,10 @@ mod tests {
 
         let tuple_id = interner.intern("tuple");
         let tuple_type = Type {
-            kind: TypeKind::Tuple(vec![
+            kind: TypeKind::Tuple(arena.alloc_slice_fill_iter([
                 Type::new(TypeKind::Primitive(PrimitiveType::String), Span::default()),
                 Type::new(TypeKind::Primitive(PrimitiveType::Number), Span::default()),
-            ]),
+            ])),
             span: Span::default(),
         };
 
@@ -2178,6 +2270,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -2186,27 +2279,27 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let obj = Box::new(Expression {
+        let obj = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(tuple_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let index = Box::new(Expression {
+        let index = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(0.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Index(obj, index),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // Index on tuple should return union of element types
@@ -2215,6 +2308,7 @@ mod tests {
 
     #[test]
     fn test_infer_unary_op_bitwise_not() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -2225,6 +2319,7 @@ mod tests {
             Arc::new(CollectingDiagnosticHandler::new());
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -2233,21 +2328,21 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let operand = Box::new(Expression {
+        let operand = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Number(5.0)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Unary(UnaryOp::BitwiseNot, operand),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         assert!(matches!(
@@ -2258,6 +2353,7 @@ mod tests {
 
     #[test]
     fn test_infer_conditional_same_types() {
+        let arena = Bump::new();
         let interner = StringInterner::new();
         let mut symbol_table = SymbolTable::new();
         let mut type_env = TypeEnvironment::new();
@@ -2293,6 +2389,7 @@ mod tests {
             .unwrap();
 
         let mut inferrer = create_test_inferrer(
+            &arena,
             &mut symbol_table,
             &mut type_env,
             &mut narrowing_context,
@@ -2301,33 +2398,33 @@ mod tests {
             &diagnostic_handler,
         );
 
-        let cond = Box::new(Expression {
+        let cond = &*arena.alloc(Expression {
             kind: ExpressionKind::Literal(Literal::Boolean(true)),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let then_expr = Box::new(Expression {
+        let then_expr = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(x_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
-        let else_expr = Box::new(Expression {
+        let else_expr = &*arena.alloc(Expression {
             kind: ExpressionKind::Identifier(y_id),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         });
 
-        let mut expr = Expression {
+        let expr = Expression {
             kind: ExpressionKind::Conditional(cond, then_expr, else_expr),
             span: Span::default(),
             annotated_type: None,
             receiver_class: None,
         };
 
-        let result = inferrer.infer_expression(&mut expr);
+        let result = inferrer.infer_expression(&expr);
         assert!(result.is_ok());
         let typ = result.unwrap();
         // When both branches have the same type, should return that type directly (not union)

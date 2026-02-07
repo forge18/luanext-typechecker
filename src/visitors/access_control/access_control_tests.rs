@@ -9,7 +9,7 @@ mod tests {
     use typedlua_parser::prelude::OperatorKind;
     use typedlua_parser::span::Span;
 
-    fn create_test_member(name: &str, access: AccessModifier) -> ClassMemberInfo {
+    fn create_test_member(name: &str, access: AccessModifier) -> ClassMemberInfo<'static> {
         ClassMemberInfo {
             name: name.to_string(),
             access,
@@ -24,7 +24,7 @@ mod tests {
         }
     }
 
-    fn create_test_method(name: &str, access: AccessModifier) -> ClassMemberInfo {
+    fn create_test_method(name: &str, access: AccessModifier) -> ClassMemberInfo<'static> {
         ClassMemberInfo {
             name: name.to_string(),
             access,
@@ -38,11 +38,11 @@ mod tests {
         }
     }
 
-    fn create_test_getter(
+    fn create_test_getter<'a>(
         name: &str,
         access: AccessModifier,
-        return_type: Type,
-    ) -> ClassMemberInfo {
+        return_type: Type<'a>,
+    ) -> ClassMemberInfo<'a> {
         ClassMemberInfo {
             name: name.to_string(),
             access,
@@ -52,7 +52,7 @@ mod tests {
         }
     }
 
-    fn create_test_setter(name: &str, access: AccessModifier, param_type: Type) -> ClassMemberInfo {
+    fn create_test_setter<'a>(name: &str, access: AccessModifier, param_type: Type<'a>) -> ClassMemberInfo<'a> {
         ClassMemberInfo {
             name: name.to_string(),
             access,

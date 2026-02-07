@@ -324,6 +324,7 @@ impl TypeCompatibility {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
     use typedlua_parser::span::Span;
 
     fn make_type(kind: TypeKind) -> Type {
@@ -357,9 +358,10 @@ mod tests {
 
     #[test]
     fn test_union_assignability() {
+        let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string = make_type(TypeKind::Primitive(PrimitiveType::String));
-        let number_or_string = make_type(TypeKind::Union(vec![number.clone(), string.clone()]));
+        let number_or_string = make_type(TypeKind::Union(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
 
         // number is assignable to number | string
         assert!(TypeCompatibility::is_assignable(&number, &number_or_string));
@@ -369,10 +371,11 @@ mod tests {
 
     #[test]
     fn test_array_assignability() {
+        let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string = make_type(TypeKind::Primitive(PrimitiveType::String));
-        let number_array = make_type(TypeKind::Array(Box::new(number.clone())));
-        let string_array = make_type(TypeKind::Array(Box::new(string.clone())));
+        let number_array = make_type(TypeKind::Array(&*arena.alloc(number.clone())));
+        let string_array = make_type(TypeKind::Array(&*arena.alloc(string.clone())));
 
         assert!(TypeCompatibility::is_assignable(
             &number_array,
@@ -386,8 +389,9 @@ mod tests {
 
     #[test]
     fn test_nullable_assignability() {
+        let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
-        let nullable_number = make_type(TypeKind::Nullable(Box::new(number.clone())));
+        let nullable_number = make_type(TypeKind::Nullable(&*arena.alloc(number.clone())));
         let nil = make_type(TypeKind::Primitive(PrimitiveType::Nil));
 
         // nil is assignable to number?
@@ -408,8 +412,9 @@ mod tests {
 
     #[test]
     fn test_parenthesized_type() {
+        let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
-        let parenthesized = make_type(TypeKind::Parenthesized(Box::new(number.clone())));
+        let parenthesized = make_type(TypeKind::Parenthesized(&*arena.alloc(number.clone())));
 
         // Parenthesized type should be same as inner type
         assert!(TypeCompatibility::is_assignable(&parenthesized, &number));
@@ -418,8 +423,9 @@ mod tests {
 
     #[test]
     fn test_literal_nil_to_nullable() {
+        let arena = Bump::new();
         let nil_type = make_type(TypeKind::Primitive(PrimitiveType::Nil));
-        let nullable_string = make_type(TypeKind::Nullable(Box::new(make_type(
+        let nullable_string = make_type(TypeKind::Nullable(&*arena.alloc(make_type(
             TypeKind::Primitive(PrimitiveType::String),
         ))));
 
@@ -432,31 +438,33 @@ mod tests {
 
     #[test]
     fn test_tuple_assignability() {
+        let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string = make_type(TypeKind::Primitive(PrimitiveType::String));
 
-        let tuple1 = make_type(TypeKind::Tuple(vec![number.clone(), string.clone()]));
-        let tuple2 = make_type(TypeKind::Tuple(vec![number.clone(), string.clone()]));
+        let tuple1 = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
+        let tuple2 = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
 
         // Same tuples should be assignable
         assert!(TypeCompatibility::is_assignable(&tuple1, &tuple2));
 
-        let tuple_diff = make_type(TypeKind::Tuple(vec![number.clone(), number.clone()]));
+        let tuple_diff = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), number.clone()])));
         assert!(!TypeCompatibility::is_assignable(&tuple_diff, &tuple1));
     }
 
     #[test]
     fn test_function_with_throws() {
+        let arena = Bump::new();
         let func1 = make_type(TypeKind::Function(FunctionType {
-            parameters: vec![],
-            return_type: Box::new(make_type(TypeKind::Primitive(PrimitiveType::Number))),
+            parameters: &[],
+            return_type: &*arena.alloc(make_type(TypeKind::Primitive(PrimitiveType::Number))),
             throws: None,
             span: Span::new(0, 0, 0, 0),
             type_parameters: None,
         }));
         let func2 = make_type(TypeKind::Function(FunctionType {
-            parameters: vec![],
-            return_type: Box::new(make_type(TypeKind::Primitive(PrimitiveType::Number))),
+            parameters: &[],
+            return_type: &*arena.alloc(make_type(TypeKind::Primitive(PrimitiveType::Number))),
             throws: None,
             span: Span::new(0, 0, 0, 0),
             type_parameters: None,

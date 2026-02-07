@@ -27,6 +27,20 @@ use typedlua_parser::prelude::AccessModifier;
 use typedlua_parser::span::Span;
 use typedlua_parser::string_interner::StringInterner;
 
+/// Convert a `Symbol<'arena>` to `Symbol<'static>` for cross-module storage.
+///
+/// # Safety
+/// This is safe because:
+/// 1. The arena that backs these types lives for the entire compilation session
+/// 2. ModuleRegistry only reads these symbols, never writes back to them
+/// 3. This is the standard pattern used by arena-based compilers (rustc uses a similar approach)
+fn symbol_to_static<'arena>(symbol: Symbol<'arena>) -> Symbol<'static> {
+    // SAFETY: The arena outlives the registry. Symbol layout is identical
+    // regardless of lifetime parameter - the lifetime only constrains
+    // the internal Type references which point into arena memory.
+    unsafe { std::mem::transmute(symbol) }
+}
+
 /// Extract all exported symbols from a program.
 ///
 /// This function analyzes export statements in the AST and builds a `ModuleExports`
@@ -66,7 +80,7 @@ pub fn extract_exports<'arena>(
                     extract_declaration_export(decl, symbol_table, interner, &mut exports);
                 }
                 ExportKind::Named { specifiers, source } => {
-                    for spec in specifiers {
+                    for spec in specifiers.iter() {
                         let local_name = interner.resolve(spec.local.node);
                         let export_name = spec
                             .exported
@@ -94,7 +108,7 @@ pub fn extract_exports<'arena>(
                                 );
                                 exports.add_named(
                                     export_name,
-                                    ExportedSymbol::new(symbol.clone(), is_type_only),
+                                    ExportedSymbol::new(symbol_to_static(symbol.clone()), is_type_only),
                                 );
                             }
                         }
@@ -114,7 +128,7 @@ pub fn extract_exports<'arena>(
                         is_exported: true,
                         references: Vec::new(),
                     };
-                    exports.set_default(ExportedSymbol::new(default_symbol, false));
+                    exports.set_default(ExportedSymbol::new(symbol_to_static(default_symbol), false));
                 }
             }
         }
@@ -135,32 +149,32 @@ fn extract_declaration_export<'arena>(
             if let Pattern::Identifier(ident) = &var_decl.pattern {
                 let ident_name = interner.resolve(ident.node);
                 if let Some(symbol) = symbol_table.lookup(&ident_name) {
-                    exports.add_named(ident_name, ExportedSymbol::new(symbol.clone(), false));
+                    exports.add_named(ident_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
                 }
             }
         }
         Statement::Function(func_decl) => {
             let func_name = interner.resolve(func_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&func_name) {
-                exports.add_named(func_name, ExportedSymbol::new(symbol.clone(), false));
+                exports.add_named(func_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
             }
         }
         Statement::Class(class_decl) => {
             let class_name = interner.resolve(class_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&class_name) {
-                exports.add_named(class_name, ExportedSymbol::new(symbol.clone(), false));
+                exports.add_named(class_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
             }
         }
         Statement::TypeAlias(type_alias) => {
             let alias_name = interner.resolve(type_alias.name.node);
             if let Some(symbol) = symbol_table.lookup(&alias_name) {
-                exports.add_named(alias_name, ExportedSymbol::new(symbol.clone(), true));
+                exports.add_named(alias_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), true));
             }
         }
         Statement::Interface(interface_decl) => {
             let interface_name = interner.resolve(interface_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&interface_name) {
-                exports.add_named(interface_name, ExportedSymbol::new(symbol.clone(), true));
+                exports.add_named(interface_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), true));
             }
         }
         _ => {}
@@ -241,7 +255,7 @@ pub fn check_import_statement<'arena>(
                 .map_err(|e| TypeCheckError::new(e, import.span))?;
         }
         ImportClause::Named(specifiers) => {
-            for spec in specifiers {
+            for spec in specifiers.iter() {
                 let name_str = interner.resolve(spec.imported.node);
                 let import_type = resolve_import_type(
                     &import.source,
@@ -266,7 +280,7 @@ pub fn check_import_statement<'arena>(
             }
         }
         ImportClause::TypeOnly(specifiers) => {
-            for spec in specifiers {
+            for spec in specifiers.iter() {
                 let name_str = interner.resolve(spec.imported.node);
                 let import_type = resolve_import_type(
                     &import.source,
@@ -298,7 +312,7 @@ pub fn check_import_statement<'arena>(
                 // Register in access control if it's an object type
                 if let TypeKind::Object(obj_type) = &import_type.kind {
                     access_control.register_class(&name_str, None);
-                    for member in &obj_type.members {
+                    for member in obj_type.members.iter() {
                         let member_info = match member {
                             ObjectTypeMember::Property(prop) => ClassMemberInfo {
                                 name: interner.resolve(prop.name.node).to_string(),
@@ -314,7 +328,7 @@ pub fn check_import_statement<'arena>(
                                 access: AccessModifier::Public,
                                 _is_static: false,
                                 kind: ClassMemberKind::Method {
-                                    parameters: method.parameters.clone(),
+                                    parameters: method.parameters.to_vec(),
                                     return_type: Some(method.return_type.clone()),
                                     is_abstract: false,
                                 },
@@ -355,7 +369,7 @@ pub fn check_import_statement<'arena>(
                 .map_err(|e| TypeCheckError::new(e, default.span))?;
 
             // Handle named imports
-            for spec in named {
+            for spec in named.iter() {
                 let name_str = interner.resolve(spec.imported.node);
                 let import_type = resolve_import_type(
                     &import.source,
@@ -392,7 +406,7 @@ pub fn check_import_statement<'arena>(
 ///
 /// Module dependencies are tracked by adding the resolved source module path to the dependencies vector.
 #[allow(clippy::too_many_arguments)]
-fn resolve_import_type(
+fn resolve_import_type<'arena>(
     source: &str,
     symbol_name: &str,
     span: Span,
@@ -451,7 +465,7 @@ mod tests {
     #[test]
     fn test_extract_exports_empty() {
         let program = typedlua_parser::ast::Program {
-            statements: Vec::new(),
+            statements: &[],
             span: Span::new(0, 0, 0, 0),
         };
         let interner = typedlua_parser::string_interner::StringInterner::new();
@@ -477,7 +491,7 @@ mod tests {
         symbol_table.declare(symbol).unwrap();
 
         let program = typedlua_parser::ast::Program {
-            statements: Vec::new(),
+            statements: &[],
             span,
         };
 
@@ -546,6 +560,7 @@ mod tests {
 
     #[test]
     fn test_check_import_statement_named() {
+        let arena = bumpalo::Bump::new();
         let span = Span::new(0, 10, 0, 10);
         let handler: Arc<dyn DiagnosticHandler> = Arc::new(CollectingDiagnosticHandler::new());
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
@@ -555,7 +570,7 @@ mod tests {
         let mut module_dependencies: Vec<PathBuf> = Vec::new();
 
         let import = typedlua_parser::ast::statement::ImportDeclaration {
-            clause: typedlua_parser::ast::statement::ImportClause::Named(vec![
+            clause: typedlua_parser::ast::statement::ImportClause::Named(arena.alloc_slice_fill_iter([
                 typedlua_parser::ast::statement::ImportSpecifier {
                     imported: typedlua_parser::ast::Spanned::new(interner.intern("foo"), span),
                     local: Some(typedlua_parser::ast::Spanned::new(
@@ -564,7 +579,7 @@ mod tests {
                     )),
                     span,
                 },
-            ]),
+            ])),
             source: "./my_module.lua".to_string(),
             span,
         };
@@ -633,7 +648,7 @@ mod tests {
         symbol_table.declare(symbol).unwrap();
 
         let program = typedlua_parser::ast::Program {
-            statements: Vec::new(),
+            statements: &[],
             span,
         };
 

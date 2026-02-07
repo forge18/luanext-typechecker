@@ -46,6 +46,7 @@ impl IfStatementNarrowingExample {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
     use typedlua_parser::ast::expression::{BinaryOp, ExpressionKind, Literal};
     use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
     use typedlua_parser::ast::Spanned;
@@ -62,6 +63,7 @@ mod tests {
 
     #[test]
     fn test_if_statement_narrowing_example() {
+        let arena = Bump::new();
         let (interner, _) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
 
@@ -71,10 +73,10 @@ mod tests {
         variable_types.insert(
             x_id,
             Type::new(
-                TypeKind::Union(vec![
+                TypeKind::Union(arena.alloc_slice_fill_iter([
                     Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                     Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-                ]),
+                ])),
                 make_span(),
             ),
         );
@@ -83,11 +85,11 @@ mod tests {
         let condition = Expression::new(
             ExpressionKind::Binary(
                 BinaryOp::NotEqual,
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Identifier(x_id),
                     make_span(),
                 )),
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Literal(Literal::Nil),
                     make_span(),
                 )),
@@ -99,6 +101,7 @@ mod tests {
 
         // Apply narrowing
         let (then_ctx, else_ctx) = IfStatementNarrowingExample::check_if_statement_with_narrowing(
+            &arena,
             &condition,
             &base_context,
             &variable_types,
@@ -124,6 +127,7 @@ mod tests {
 
     #[test]
     fn test_typeof_narrowing_example() {
+        let arena = Bump::new();
         let (interner, _) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
 
@@ -133,10 +137,10 @@ mod tests {
         variable_types.insert(
             x_id,
             Type::new(
-                TypeKind::Union(vec![
+                TypeKind::Union(arena.alloc_slice_fill_iter([
                     Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                     Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
-                ]),
+                ])),
                 make_span(),
             ),
         );
@@ -145,22 +149,22 @@ mod tests {
         let condition = Expression::new(
             ExpressionKind::Binary(
                 BinaryOp::Equal,
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Call(
-                        Box::new(Expression::new(
+                        &*arena.alloc(Expression::new(
                             ExpressionKind::Identifier(typeof_id),
                             make_span(),
                         )),
-                        vec![typedlua_parser::ast::expression::Argument {
+                        arena.alloc_slice_fill_iter([typedlua_parser::ast::expression::Argument {
                             value: Expression::new(ExpressionKind::Identifier(x_id), make_span()),
                             is_spread: false,
                             span: make_span(),
-                        }],
+                        }]),
                         None,
                     ),
                     make_span(),
                 )),
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Literal(Literal::String("string".to_string())),
                     make_span(),
                 )),
@@ -172,6 +176,7 @@ mod tests {
 
         // Apply narrowing
         let (then_ctx, else_ctx) = IfStatementNarrowingExample::check_if_statement_with_narrowing(
+            &arena,
             &condition,
             &base_context,
             &variable_types,
@@ -196,7 +201,9 @@ mod tests {
     #[test]
     fn test_type_guard_narrowing() {
         use typedlua_parser::ast::types::{FunctionType, TypePredicate};
+        use typedlua_parser::ast::Ident;
 
+        let arena = Bump::new();
         let (interner, _) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
 
@@ -209,19 +216,19 @@ mod tests {
         variable_types.insert(
             x_id,
             Type::new(
-                TypeKind::Union(vec![
+                TypeKind::Union(arena.alloc_slice_fill_iter([
                     Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
                     Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
                     Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-                ]),
+                ])),
                 make_span(),
             ),
         );
 
         // Register isString as a type guard function: (x: any) => x is string
         let type_predicate = TypePredicate {
-            parameter_name: Spanned::new(x_id, make_span()),
-            type_annotation: Box::new(Type::new(
+            parameter_name: Ident::new(x_id, make_span()),
+            type_annotation: &*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 make_span(),
             )),
@@ -229,8 +236,8 @@ mod tests {
         };
         let func_type = FunctionType {
             type_parameters: None,
-            parameters: vec![],
-            return_type: Box::new(Type::new(
+            parameters: &[],
+            return_type: &*arena.alloc(Type::new(
                 TypeKind::TypePredicate(type_predicate),
                 make_span(),
             )),
@@ -245,15 +252,15 @@ mod tests {
         // Condition: isString(x)
         let condition = Expression::new(
             ExpressionKind::Call(
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Identifier(is_string_id),
                     make_span(),
                 )),
-                vec![typedlua_parser::ast::expression::Argument {
+                arena.alloc_slice_fill_iter([typedlua_parser::ast::expression::Argument {
                     value: Expression::new(ExpressionKind::Identifier(x_id), make_span()),
                     is_spread: false,
                     span: make_span(),
-                }],
+                }]),
                 None,
             ),
             make_span(),
@@ -263,6 +270,7 @@ mod tests {
 
         // Apply narrowing
         let (then_ctx, else_ctx) = IfStatementNarrowingExample::check_if_statement_with_narrowing(
+            &arena,
             &condition,
             &base_context,
             &variable_types,
@@ -296,6 +304,7 @@ mod tests {
         use typedlua_parser::ast::expression::ExpressionKind;
         use typedlua_parser::ast::types::TypeReference;
 
+        let arena = Bump::new();
         let (interner, _) =
             typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
 
@@ -306,7 +315,7 @@ mod tests {
         variable_types.insert(
             pet_id,
             Type::new(
-                TypeKind::Union(vec![
+                TypeKind::Union(arena.alloc_slice_fill_iter([
                     Type::new(
                         TypeKind::Reference(TypeReference {
                             name: Spanned::new(animal_id, make_span()),
@@ -323,7 +332,7 @@ mod tests {
                         }),
                         make_span(),
                     ),
-                ]),
+                ])),
                 make_span(),
             ),
         );
@@ -332,11 +341,11 @@ mod tests {
         let condition = Expression::new(
             ExpressionKind::Binary(
                 BinaryOp::Instanceof,
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Identifier(pet_id),
                     make_span(),
                 )),
-                Box::new(Expression::new(
+                &*arena.alloc(Expression::new(
                     ExpressionKind::Identifier(dog_id),
                     make_span(),
                 )),
@@ -348,6 +357,7 @@ mod tests {
 
         // Apply narrowing
         let (then_ctx, _else_ctx) = IfStatementNarrowingExample::check_if_statement_with_narrowing(
+            &arena,
             &condition,
             &base_context,
             &variable_types,

@@ -165,7 +165,7 @@ mod tests {
         );
         let result = check_return_statement(
             &typedlua_parser::ast::statement::ReturnStatement {
-                values: Vec::new(),
+                values: &[],
                 span,
             },
             Some(&return_type),
@@ -179,7 +179,7 @@ mod tests {
         let span = Span::new(0, 10, 0, 10);
         let result = check_return_statement(
             &typedlua_parser::ast::statement::ReturnStatement {
-                values: Vec::new(),
+                values: &[],
                 span,
             },
             None,
@@ -201,10 +201,10 @@ mod tests {
                 receiver_class: None,
             },
             then_block: typedlua_parser::ast::statement::Block {
-                statements: Vec::new(),
+                statements: &[],
                 span,
             },
-            else_ifs: Vec::new(),
+            else_ifs: &[],
             else_block: None,
             span,
         };
@@ -225,7 +225,7 @@ mod tests {
                 receiver_class: None,
             },
             body: typedlua_parser::ast::statement::Block {
-                statements: Vec::new(),
+                statements: &[],
                 span,
             },
             span,
@@ -236,8 +236,9 @@ mod tests {
 
     #[test]
     fn test_check_for_statement() {
+        let arena = bumpalo::Bump::new();
         let span = Span::new(0, 10, 0, 10);
-        let for_stmt = typedlua_parser::ast::statement::ForStatement::Numeric(Box::new(
+        let for_stmt = typedlua_parser::ast::statement::ForStatement::Numeric(&*arena.alloc(
             typedlua_parser::ast::statement::ForNumeric {
                 variable: typedlua_parser::ast::Spanned::new(
                     typedlua_parser::string_interner::StringId::from_u32(0),
@@ -261,7 +262,7 @@ mod tests {
                 },
                 step: None,
                 body: typedlua_parser::ast::statement::Block {
-                    statements: Vec::new(),
+                    statements: &[],
                     span,
                 },
                 span,
@@ -276,7 +277,7 @@ mod tests {
         let span = Span::new(0, 10, 0, 10);
         let repeat_stmt = typedlua_parser::ast::statement::RepeatStatement {
             body: typedlua_parser::ast::statement::Block {
-                statements: Vec::new(),
+                statements: &[],
                 span,
             },
             until: typedlua_parser::ast::expression::Expression {

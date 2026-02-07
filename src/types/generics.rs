@@ -1001,11 +1001,13 @@ fn instantiate_try_expression<'arena>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
     use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
     use typedlua_parser::ast::Spanned;
 
     #[test]
     fn test_instantiate_simple_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1033,6 +1035,7 @@ mod tests {
 
         // Instantiate T with number
         let result = instantiate_type(
+            &arena,
             &type_ref_t,
             &[type_param],
             std::slice::from_ref(&number_type),
@@ -1048,6 +1051,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_array_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1062,7 +1066,7 @@ mod tests {
 
         // Array<T>
         let array_t = Type::new(
-            TypeKind::Array(Box::new(Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
                 TypeKind::Reference(TypeReference {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
@@ -1077,7 +1081,7 @@ mod tests {
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
         // Instantiate Array<T> with string
-        let result = instantiate_type(&array_t, &[type_param], &[string_type]).unwrap();
+        let result = instantiate_type(&arena, &array_t, &[type_param], &[string_type]).unwrap();
 
         // Result should be Array<string>
         match &result.kind {
@@ -1093,6 +1097,7 @@ mod tests {
 
     #[test]
     fn test_wrong_number_of_type_args() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1119,7 +1124,7 @@ mod tests {
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
         // Try to instantiate with wrong number of type arguments
-        let result = instantiate_type(&type_ref_t, &[type_param], &[number_type, string_type]);
+        let result = instantiate_type(&arena, &type_ref_t, &[type_param], &[number_type, string_type]);
 
         assert!(result.is_err());
     }
@@ -1129,6 +1134,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1180,6 +1186,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1197,7 +1204,7 @@ mod tests {
         let func_param = Parameter {
             pattern: Pattern::Identifier(Spanned::new(values_id, span)),
             type_annotation: Some(Type::new(
-                TypeKind::Array(Box::new(Type::new(
+                TypeKind::Array(&*arena.alloc(Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
@@ -1215,7 +1222,7 @@ mod tests {
 
         // Argument type: Array<string>
         let arg_type = Type::new(
-            TypeKind::Array(Box::new(Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 span,
             ))),
@@ -1236,6 +1243,7 @@ mod tests {
 
     #[test]
     fn test_check_constraints_pass() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1243,7 +1251,7 @@ mod tests {
         // Type parameter T extends number
         let type_param = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 span,
             ))),
@@ -1260,6 +1268,7 @@ mod tests {
 
     #[test]
     fn test_check_constraints_fail() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1267,7 +1276,7 @@ mod tests {
         // Type parameter T extends number
         let type_param = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 span,
             ))),
@@ -1288,6 +1297,7 @@ mod tests {
 
     #[test]
     fn test_build_substitutions_success() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1322,6 +1332,7 @@ mod tests {
 
     #[test]
     fn test_build_substitutions_wrong_count() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1345,6 +1356,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_tuple_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1366,7 +1378,7 @@ mod tests {
 
         // Tuple<T, U>
         let tuple_type = Type::new(
-            TypeKind::Tuple(vec![
+            TypeKind::Tuple(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
@@ -1383,7 +1395,7 @@ mod tests {
                     }),
                     span,
                 ),
-            ]),
+            ])),
             span,
         );
 
@@ -1391,6 +1403,7 @@ mod tests {
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
         let result = instantiate_type(
+            &arena,
             &tuple_type,
             &[type_param_t, type_param_u],
             &[number_type, string_type],
@@ -1415,6 +1428,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_union_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1428,7 +1442,7 @@ mod tests {
 
         // Union<T, nil>
         let union_type = Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
@@ -1438,13 +1452,13 @@ mod tests {
                     span,
                 ),
                 Type::new(TypeKind::Primitive(PrimitiveType::Nil), span),
-            ]),
+            ])),
             span,
         );
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
-        let result = instantiate_type(&union_type, &[type_param], &[string_type]).unwrap();
+        let result = instantiate_type(&arena, &union_type, &[type_param], &[string_type]).unwrap();
 
         match &result.kind {
             TypeKind::Union(members) => {
@@ -1464,6 +1478,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_function_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1482,7 +1497,7 @@ mod tests {
         let func_type = Type::new(
             TypeKind::Function(typedlua_parser::ast::types::FunctionType {
                 type_parameters: None,
-                parameters: vec![Parameter {
+                parameters: arena.alloc_slice_fill_iter([Parameter {
                     pattern: Pattern::Identifier(Spanned::new(param_id, span)),
                     type_annotation: Some(Type::new(
                         TypeKind::Reference(TypeReference {
@@ -1496,8 +1511,8 @@ mod tests {
                     is_rest: false,
                     is_optional: false,
                     span,
-                }],
-                return_type: Box::new(Type::new(
+                }]),
+                return_type: &*arena.alloc(Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
@@ -1513,7 +1528,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&func_type, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &func_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Function(func) => {
@@ -1537,6 +1552,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_nullable_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1550,7 +1566,7 @@ mod tests {
 
         // Nullable<T>
         let nullable_type = Type::new(
-            TypeKind::Nullable(Box::new(Type::new(
+            TypeKind::Nullable(&*arena.alloc(Type::new(
                 TypeKind::Reference(TypeReference {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
@@ -1563,7 +1579,7 @@ mod tests {
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
-        let result = instantiate_type(&nullable_type, &[type_param], &[string_type]).unwrap();
+        let result = instantiate_type(&arena, &nullable_type, &[type_param], &[string_type]).unwrap();
 
         match &result.kind {
             TypeKind::Nullable(inner) => {
@@ -1578,6 +1594,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_nested_generic() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1591,8 +1608,8 @@ mod tests {
 
         // Array<Array<T>>
         let nested_array = Type::new(
-            TypeKind::Array(Box::new(Type::new(
-                TypeKind::Array(Box::new(Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
+                TypeKind::Array(&*arena.alloc(Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
                         type_arguments: None,
@@ -1607,7 +1624,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&nested_array, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &nested_array, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Array(outer) => match &outer.kind {
@@ -1628,6 +1645,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1710,6 +1728,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1726,7 +1745,7 @@ mod tests {
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
             constraint: None,
-            default: Some(Box::new(Type::new(
+            default: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 span,
             ))),
@@ -1775,6 +1794,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1823,20 +1843,22 @@ mod tests {
 
     #[test]
     fn test_instantiate_block_empty() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let block = typedlua_parser::ast::statement::Block {
-            statements: vec![],
+            statements: &[],
             span,
         };
 
-        let substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
-        let result = instantiate_block(&block, &substitutions);
+        let substitutions: FxHashMap<StringId, Type<'_>> = FxHashMap::default();
+        let result = instantiate_block(&arena, &block, &substitutions);
 
         assert!(result.statements.is_empty());
     }
 
     #[test]
     fn test_instantiate_expression_literal() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let expr = typedlua_parser::ast::expression::Expression {
             kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
@@ -1847,8 +1869,8 @@ mod tests {
             receiver_class: None,
         };
 
-        let substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
-        let result = instantiate_expression(&expr, &substitutions);
+        let substitutions: FxHashMap<StringId, Type<'_>> = FxHashMap::default();
+        let result = instantiate_expression(&arena, &expr, &substitutions);
 
         assert!(matches!(
             result.kind,
@@ -1860,6 +1882,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_parameter_with_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1884,10 +1907,10 @@ mod tests {
         };
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
-        let mut substitutions: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
+        let mut substitutions: FxHashMap<StringId, Type<'_>> = FxHashMap::default();
         substitutions.insert(t_id, number_type);
 
-        let result = instantiate_parameter(&param, &substitutions);
+        let result = instantiate_parameter(&arena, &param, &substitutions);
 
         assert!(result.type_annotation.is_some());
         assert!(matches!(
@@ -1898,6 +1921,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_parenthesized_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1911,7 +1935,7 @@ mod tests {
 
         // Parenthesized<T>
         let parenthesized_type = Type::new(
-            TypeKind::Parenthesized(Box::new(Type::new(
+            TypeKind::Parenthesized(&*arena.alloc(Type::new(
                 TypeKind::Reference(TypeReference {
                     name: Spanned::new(t_id, span),
                     type_arguments: None,
@@ -1924,7 +1948,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&parenthesized_type, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &parenthesized_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Parenthesized(inner) => {
@@ -1939,6 +1963,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_intersection_type() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -1960,7 +1985,7 @@ mod tests {
 
         // Intersection<T, U>
         let intersection_type = Type::new(
-            TypeKind::Intersection(vec![
+            TypeKind::Intersection(arena.alloc_slice_fill_iter([
                 Type::new(
                     TypeKind::Reference(TypeReference {
                         name: Spanned::new(t_id, span),
@@ -1977,7 +2002,7 @@ mod tests {
                     }),
                     span,
                 ),
-            ]),
+            ])),
             span,
         );
 
@@ -1985,6 +2010,7 @@ mod tests {
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
         let result = instantiate_type(
+            &arena,
             &intersection_type,
             &[type_param_t, type_param_u],
             &[number_type, string_type],
@@ -2009,6 +2035,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_object_type_with_property() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2024,7 +2051,7 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: vec![typedlua_parser::ast::types::ObjectTypeMember::Property(
+                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Property(
                     typedlua_parser::ast::statement::PropertySignature {
                         name: Spanned::new(value_id, span),
                         type_annotation: Type::new(
@@ -2039,7 +2066,7 @@ mod tests {
                         is_optional: false,
                         span,
                     },
-                )],
+                )]),
                 span,
             }),
             span,
@@ -2047,7 +2074,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&obj_type, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &obj_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Object(obj) => {
@@ -2069,6 +2096,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_object_type_with_method() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2084,11 +2112,11 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: vec![typedlua_parser::ast::types::ObjectTypeMember::Method(
+                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Method(
                     typedlua_parser::ast::statement::MethodSignature {
                         name: Spanned::new(method_id, span),
                         type_parameters: None,
-                        parameters: vec![],
+                        parameters: &[],
                         return_type: Type::new(
                             TypeKind::Reference(TypeReference {
                                 name: Spanned::new(t_id, span),
@@ -2100,7 +2128,7 @@ mod tests {
                         body: None,
                         span,
                     },
-                )],
+                )]),
                 span,
             }),
             span,
@@ -2108,7 +2136,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&obj_type, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &obj_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Object(obj) => {
@@ -2130,6 +2158,7 @@ mod tests {
 
     #[test]
     fn test_instantiate_object_type_with_index_signature() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2145,7 +2174,7 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: vec![typedlua_parser::ast::types::ObjectTypeMember::Index(
+                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Index(
                     typedlua_parser::ast::statement::IndexSignature {
                         key_name: Spanned::new(key_id, span),
                         key_type: typedlua_parser::ast::statement::IndexKeyType::String,
@@ -2159,7 +2188,7 @@ mod tests {
                         ),
                         span,
                     },
-                )],
+                )]),
                 span,
             }),
             span,
@@ -2167,7 +2196,7 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&obj_type, &[type_param], &[number_type]).unwrap();
+        let result = instantiate_type(&arena, &obj_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Object(obj) => {
@@ -2187,6 +2216,7 @@ mod tests {
 
     #[test]
     fn test_substitute_type_with_type_args_error() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2202,10 +2232,10 @@ mod tests {
         let type_ref_with_args = Type::new(
             TypeKind::Reference(TypeReference {
                 name: Spanned::new(t_id, span),
-                type_arguments: Some(vec![Type::new(
+                type_arguments: Some(arena.alloc_slice_fill_iter([Type::new(
                     TypeKind::Primitive(PrimitiveType::Number),
                     span,
-                )]),
+                )])),
                 span,
             }),
             span,
@@ -2213,18 +2243,19 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&type_ref_with_args, &[type_param], &[number_type]);
+        let result = instantiate_type(&arena, &type_ref_with_args, &[type_param], &[number_type]);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_instantiate_type_primitive() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
 
         let primitive_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&primitive_type, &[], &[]);
+        let result = instantiate_type(&arena, &primitive_type, &[], &[]);
 
         assert!(result.is_ok());
         assert!(matches!(
@@ -2235,6 +2266,7 @@ mod tests {
 
     #[test]
     fn test_check_type_constraints_with_multiple_params() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2242,7 +2274,7 @@ mod tests {
 
         let type_param_t = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 span,
             ))),
@@ -2252,7 +2284,7 @@ mod tests {
 
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 span,
             ))),
@@ -2270,6 +2302,7 @@ mod tests {
 
     #[test]
     fn test_check_type_constraints_second_param_fails() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2277,7 +2310,7 @@ mod tests {
 
         let type_param_t = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 span,
             ))),
@@ -2287,7 +2320,7 @@ mod tests {
 
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
-            constraint: Some(Box::new(Type::new(
+            constraint: Some(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::String),
                 span,
             ))),
@@ -2305,10 +2338,11 @@ mod tests {
 
     #[test]
     fn test_infer_from_types_array_mismatch() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
 
         let param_type = Type::new(
-            TypeKind::Array(Box::new(Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
                 TypeKind::Primitive(PrimitiveType::Number),
                 span,
             ))),
@@ -2317,7 +2351,7 @@ mod tests {
 
         let arg_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
-        let mut inferred: FxHashMap<StringId, Type<'arena>> = FxHashMap::default();
+        let mut inferred: FxHashMap<StringId, Type<'_>> = FxHashMap::default();
         let result = infer_from_types(&param_type, &arg_type, &mut inferred);
 
         assert!(result.is_ok());
@@ -2338,6 +2372,7 @@ mod tests {
 
     #[test]
     fn test_types_equal_references() {
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
@@ -2367,6 +2402,7 @@ mod tests {
         use typedlua_parser::ast::pattern::Pattern;
         use typedlua_parser::ast::statement::Parameter;
 
+        let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
         let interner = typedlua_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");

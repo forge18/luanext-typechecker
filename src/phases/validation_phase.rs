@@ -42,8 +42,8 @@ use typedlua_parser::string_interner::StringInterner;
 /// # Returns
 ///
 /// Returns `Ok(())` if validation passes, or an error if duplicates are found.
-pub fn validate_interface_members(
-    members: &[ObjectTypeMember],
+pub fn validate_interface_members<'arena>(
+    members: &[ObjectTypeMember<'arena>],
     span: Span,
 ) -> Result<(), TypeCheckError> {
     // Check for duplicate property names
@@ -88,7 +88,7 @@ pub fn validate_index_signature<'arena>(
     index_sig: &IndexSignature<'arena>,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
-    for member in &class_decl.members {
+    for member in class_decl.members.iter() {
         if let ClassMember::Property(prop) = member {
             // Check if property type is assignable to index signature value type
             if !TypeCompatibility::is_assignable(&prop.type_annotation, &index_sig.value_type) {
@@ -126,7 +126,7 @@ pub fn validate_index_signature<'arena>(
 pub fn check_abstract_methods_implemented(
     class_name: &str,
     parent_name: &str,
-    class_members: &[ClassMember],
+    class_members: &[ClassMember<'_>],
     access_control: &AccessControl,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
@@ -183,8 +183,8 @@ pub fn check_abstract_methods_implemented(
 ///
 /// Returns `Ok(())` if validation passes, or an error if decorators are disabled
 /// or expressions are invalid.
-pub fn check_decorators<F>(
-    decorators: &mut [Decorator],
+pub fn check_decorators<'arena, F>(
+    decorators: &[Decorator<'arena>],
     enable_decorators: bool,
     interner: &StringInterner,
     symbol_table: &SymbolTable<'arena>,
@@ -192,7 +192,7 @@ pub fn check_decorators<F>(
     mut infer_expression_type: F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
+    F: FnMut(&Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
 {
     // Check if decorators are enabled
     if !decorators.is_empty() && !enable_decorators {
@@ -230,9 +230,9 @@ where
     }
 
     // Validate decorator expressions
-    for decorator in decorators.iter_mut() {
+    for decorator in decorators.iter() {
         check_decorator_expression(
-            &mut decorator.expression,
+            &decorator.expression,
             interner,
             symbol_table,
             &mut infer_expression_type,
@@ -253,14 +253,14 @@ where
 /// - `interner`: String interner for name resolution
 /// - `symbol_table`: Symbol table for checking identifier existence
 /// - `infer_expression_type`: Callback to infer argument types
-fn check_decorator_expression<F>(
-    expr: &mut DecoratorExpression,
+fn check_decorator_expression<'arena, F>(
+    expr: &DecoratorExpression<'arena>,
     interner: &StringInterner,
     symbol_table: &SymbolTable<'arena>,
     infer_expression_type: &mut F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
+    F: FnMut(&Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
 {
     match expr {
         DecoratorExpression::Identifier(name) => {
@@ -280,7 +280,7 @@ where
             check_decorator_expression(callee, interner, symbol_table, infer_expression_type)?;
 
             // Type check all arguments
-            for arg in arguments.iter_mut() {
+            for arg in arguments.iter() {
                 infer_expression_type(arg)?;
             }
 
@@ -319,13 +319,14 @@ where
 ///
 /// Returns `Ok(())` if the override is valid, or an error if validation fails.
 #[allow(clippy::too_many_arguments)]
-pub fn check_method_override<F>(
+pub fn check_method_override<'arena, F>(
+    arena: &'arena bumpalo::Bump,
     method: &MethodDeclaration<'arena>,
     class_name: &str,
     parent_name: Option<&String>,
     parent_type_params: Option<&Vec<TypeParameter<'arena>>>,
-    extends_type_args: Option<&Vec<Type<'arena>>>,
-    access_control: &AccessControl,
+    extends_type_args: Option<&[Type<'arena>]>,
+    access_control: &AccessControl<'arena>,
     interner: &StringInterner,
     mut deep_resolve_type: F,
 ) -> Result<(), TypeCheckError>
@@ -440,7 +441,7 @@ where
                 let parent_type = if let (Some(type_params), Some(type_args)) =
                     (parent_type_params, extends_type_args)
                 {
-                    generics::instantiate_type(raw_parent_type, type_params, type_args)
+                    generics::instantiate_type(arena, raw_parent_type, type_params, type_args)
                         .unwrap_or_else(|_| raw_parent_type.clone())
                 } else {
                     raw_parent_type.clone()
@@ -471,7 +472,7 @@ where
                     let parent_ret = if let (Some(type_params), Some(type_args)) =
                         (parent_type_params, extends_type_args)
                     {
-                        generics::instantiate_type(raw_parent_ret, type_params, type_args)
+                        generics::instantiate_type(arena, raw_parent_ret, type_params, type_args)
                             .unwrap_or_else(|_| raw_parent_ret.clone())
                     } else {
                         raw_parent_ret.clone()
@@ -566,14 +567,14 @@ pub fn has_circular_inheritance(
 pub fn check_class_implements_interface<'arena>(
     class_decl: &ClassDeclaration<'arena>,
     interface: &Type<'arena>,
-    type_env: &crate::core::type_environment::TypeEnvironment,
+    type_env: &crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
     use typedlua_parser::ast::statement::ClassMember;
     use typedlua_parser::ast::types::{ObjectTypeMember, TypeKind};
 
     if let TypeKind::Object(obj_type) = &interface.kind {
-        for required_member in &obj_type.members {
+        for required_member in obj_type.members.iter() {
             match required_member {
                 ObjectTypeMember::Property(req_prop) => {
                     // Find matching property in class
@@ -721,7 +722,7 @@ pub fn check_class_implements_interface<'arena>(
 pub fn check_implements_assignable<'arena>(
     source: &Type<'arena>,
     target: &Type<'arena>,
-    type_env: &crate::core::type_environment::TypeEnvironment,
+    type_env: &crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> bool {
     use typedlua_parser::ast::types::TypeKind;
