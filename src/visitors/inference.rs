@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tracing::{debug, error, instrument, span, Level};
 use typedlua_parser::ast::expression::*;
-use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern};
+use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
 use typedlua_parser::ast::statement::{Block, OperatorKind, Statement};
 use typedlua_parser::ast::types::*;
 use typedlua_parser::prelude::{
@@ -1337,7 +1337,7 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                     TypeKind::Array(elem_type) => {
                         for elem in array_pattern.elements.iter() {
                             match elem {
-                                ArrayPatternElement::Pattern(pat, _) => {
+                                ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
                                     self.check_pattern(pat, *elem_type)?;
                                 }
                                 ArrayPatternElement::Rest(ident) => {
@@ -1569,7 +1569,7 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
 
                 for elem in array_pattern.elements.iter() {
                     match elem {
-                        ArrayPatternElement::Pattern(pat, _) => {
+                        ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
                             self.extract_pattern_bindings_recursive(pat, &elem_type, bindings)?;
                         }
                         ArrayPatternElement::Rest(ident) => {
@@ -1836,7 +1836,7 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
         e2: &ArrayPatternElement,
     ) -> bool {
         match (e1, e2) {
-            (ArrayPatternElement::Pattern(p1, _), ArrayPatternElement::Pattern(p2, _)) => {
+            (ArrayPatternElement::Pattern(PatternWithDefault { pattern: p1, .. }), ArrayPatternElement::Pattern(PatternWithDefault { pattern: p2, .. })) => {
                 self.pattern_subsumes(p1, p2)
             }
             (ArrayPatternElement::Rest(_), ArrayPatternElement::Rest(_)) => true,

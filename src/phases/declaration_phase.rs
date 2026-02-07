@@ -13,7 +13,7 @@
 use bumpalo::Bump;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
-use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern};
+use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
 use typedlua_parser::ast::statement::{
     DeclareConstStatement, DeclareFunctionStatement, DeclareNamespaceStatement,
     FunctionDeclaration, MethodSignature, PropertySignature, Statement,
@@ -151,7 +151,7 @@ pub fn declare_pattern<'arena>(
                 TypeKind::Array(elem_type) => {
                     for elem in array_pattern.elements.iter() {
                         match elem {
-                            ArrayPatternElement::Pattern(pat, _) => {
+                            ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
                                 declare_pattern(
                                     pat,
                                     (*elem_type).clone(),
@@ -186,7 +186,7 @@ pub fn declare_pattern<'arena>(
                     let mut type_index = 0;
                     for elem in array_pattern.elements.iter() {
                         match elem {
-                            ArrayPatternElement::Pattern(pat, _) => {
+                            ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
                                 let elem_type = if type_index < elem_types.len() {
                                     elem_types[type_index].clone()
                                 } else {
