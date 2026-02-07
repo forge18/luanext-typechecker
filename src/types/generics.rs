@@ -8,9 +8,10 @@ use typedlua_parser::span::Span;
 
 /// Substitutes type parameters with concrete types in a type
 pub fn instantiate_type<'arena>(
+    arena: &'arena bumpalo::Bump,
     typ: &Type<'arena>,
-    type_params: &[TypeParameter],
-    type_args: &[Type],
+    type_params: &[TypeParameter<'arena>],
+    type_args: &[Type<'arena>],
 ) -> Result<Type<'arena>, String> {
     if type_params.len() != type_args.len() {
         return Err(format!(
@@ -26,11 +27,11 @@ pub fn instantiate_type<'arena>(
         substitutions.insert(param.name.node, arg.clone());
     }
 
-    substitute_type(typ, &substitutions)
+    substitute_type(arena, typ, &substitutions)
 }
 
 /// Recursively substitute type parameters in a type
-fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type<'arena>, String> {
+fn substitute_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type<'arena>, String> {
     match &typ.kind {
         // If this is a type reference that matches a type parameter, substitute it
         TypeKind::Reference(type_ref) => {
@@ -55,13 +56,14 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
                 if let Some(ref args) = type_ref.type_arguments {
                     let substituted_args: Result<Vec<_>, _> = args
                         .iter()
-                        .map(|arg| substitute_type(arg, substitutions))
+                        .map(|arg| substitute_type(arena, arg, substitutions))
                         .collect();
+                    let substituted_args = substituted_args?;
 
                     Ok(Type::new(
                         TypeKind::Reference(TypeReference {
                             name: type_ref.name.clone(),
-                            type_arguments: Some(substituted_args?),
+                            type_arguments: Some(arena.alloc_slice_fill_iter(substituted_args)),
                             span: type_ref.span,
                         }),
                         typ.span,
@@ -74,9 +76,9 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
 
         // Array type: substitute element type
         TypeKind::Array(elem) => {
-            let substituted_elem = substitute_type(elem, substitutions)?;
+            let substituted_elem = substitute_type(arena, elem, substitutions)?;
             Ok(Type::new(
-                TypeKind::Array(Box::new(substituted_elem)),
+                TypeKind::Array(arena.alloc(substituted_elem)),
                 typ.span,
             ))
         }
@@ -85,31 +87,31 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
         TypeKind::Tuple(elems) => {
             let substituted_elems: Result<Vec<_>, _> = elems
                 .iter()
-                .map(|elem| substitute_type(elem, substitutions))
+                .map(|elem| substitute_type(arena, elem, substitutions))
                 .collect();
 
-            Ok(Type::new(TypeKind::Tuple(substituted_elems?), typ.span))
+            Ok(Type::new(TypeKind::Tuple(arena.alloc_slice_fill_iter(substituted_elems?)), typ.span))
         }
 
         // Union type: substitute each member
         TypeKind::Union(members) => {
             let substituted_members: Result<Vec<_>, _> = members
                 .iter()
-                .map(|member| substitute_type(member, substitutions))
+                .map(|member| substitute_type(arena, member, substitutions))
                 .collect();
 
-            Ok(Type::new(TypeKind::Union(substituted_members?), typ.span))
+            Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(substituted_members?)), typ.span))
         }
 
         // Intersection type: substitute each member
         TypeKind::Intersection(members) => {
             let substituted_members: Result<Vec<_>, _> = members
                 .iter()
-                .map(|member| substitute_type(member, substitutions))
+                .map(|member| substitute_type(arena, member, substitutions))
                 .collect();
 
             Ok(Type::new(
-                TypeKind::Intersection(substituted_members?),
+                TypeKind::Intersection(arena.alloc_slice_fill_iter(substituted_members?)),
                 typ.span,
             ))
         }
@@ -123,7 +125,7 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
                 .iter()
                 .map(|param| {
                     if let Some(ref type_ann) = param.type_annotation {
-                        let substituted = substitute_type(type_ann, substitutions)?;
+                        let substituted = substitute_type(arena, type_ann, substitutions)?;
                         Ok(Parameter {
                             pattern: param.pattern.clone(),
                             type_annotation: Some(substituted),
@@ -138,13 +140,13 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
                 })
                 .collect();
 
-            let substituted_return = substitute_type(&func_type.return_type, substitutions)?;
+            let substituted_return = substitute_type(arena, &func_type.return_type, substitutions)?;
 
             Ok(Type::new(
                 TypeKind::Function(typedlua_parser::ast::types::FunctionType {
                     type_parameters: None, // Type parameters are gone after substitution
-                    parameters: substituted_params?,
-                    return_type: Box::new(substituted_return),
+                    parameters: arena.alloc_slice_fill_iter(substituted_params?),
+                    return_type: arena.alloc(substituted_return),
                     throws: func_type.throws.clone(),
                     span: func_type.span,
                 }),
@@ -154,18 +156,18 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
 
         // Nullable type: substitute inner type
         TypeKind::Nullable(inner) => {
-            let substituted_inner = substitute_type(inner, substitutions)?;
+            let substituted_inner = substitute_type(arena, inner, substitutions)?;
             Ok(Type::new(
-                TypeKind::Nullable(Box::new(substituted_inner)),
+                TypeKind::Nullable(arena.alloc(substituted_inner)),
                 typ.span,
             ))
         }
 
         // Parenthesized type: substitute inner type
         TypeKind::Parenthesized(inner) => {
-            let substituted_inner = substitute_type(inner, substitutions)?;
+            let substituted_inner = substitute_type(arena, inner, substitutions)?;
             Ok(Type::new(
-                TypeKind::Parenthesized(Box::new(substituted_inner)),
+                TypeKind::Parenthesized(arena.alloc(substituted_inner)),
                 typ.span,
             ))
         }
@@ -176,11 +178,11 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
             use typedlua_parser::ast::types::ObjectTypeMember;
 
             let mut substituted_members: Vec<ObjectTypeMember<'arena>> = Vec::new();
-            for member in &obj_type.members {
+            for member in obj_type.members.iter() {
                 let substituted = match member {
                     ObjectTypeMember::Property(prop) => {
                         let substituted_type =
-                            substitute_type(&prop.type_annotation, substitutions)?;
+                            substitute_type(arena, &prop.type_annotation, substitutions)?;
                         ObjectTypeMember::Property(PropertySignature {
                             type_annotation: substituted_type,
                             ..prop.clone()
@@ -190,7 +192,7 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
                         // For methods, substitute the return type
                         // Note: method parameters are handled separately during function type checking
                         let substituted_return =
-                            substitute_type(&method.return_type, substitutions)?;
+                            substitute_type(arena, &method.return_type, substitutions)?;
 
                         ObjectTypeMember::Method(MethodSignature {
                             return_type: substituted_return,
@@ -200,7 +202,7 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
                     ObjectTypeMember::Index(index) => {
                         // Index signatures have key_type and value_type
                         // key_type is IndexKeyType (String or Number), not Type
-                        let substituted_value = substitute_type(&index.value_type, substitutions)?;
+                        let substituted_value = substitute_type(arena, &index.value_type, substitutions)?;
 
                         ObjectTypeMember::Index(typedlua_parser::ast::statement::IndexSignature {
                             value_type: substituted_value,
@@ -213,8 +215,8 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
 
             Ok(Type::new(
                 TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                    members: substituted_members,
-                    ..obj_type.clone()
+                    members: arena.alloc_slice_fill_iter(substituted_members),
+                    span: obj_type.span,
                 }),
                 typ.span,
             ))
@@ -227,9 +229,9 @@ fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringI
 }
 
 /// Check if type arguments satisfy type parameter constraints
-pub fn check_type_constraints(
-    type_params: &[TypeParameter],
-    type_args: &[Type],
+pub fn check_type_constraints<'arena>(
+    type_params: &[TypeParameter<'arena>],
+    type_args: &[Type<'arena>],
 ) -> Result<(), String> {
     if type_params.len() != type_args.len() {
         return Err(format!(
@@ -266,9 +268,9 @@ fn is_type_compatible<'arena>(arg: &Type<'arena>, constraint: &Type<'arena>) -> 
 /// Infer type arguments for a generic function from argument types
 /// Returns a map from type parameter name to inferred type
 pub fn infer_type_arguments<'arena>(
-    type_params: &[TypeParameter],
-    function_params: &[typedlua_parser::ast::statement::Parameter],
-    arg_types: &[Type],
+    type_params: &[TypeParameter<'arena>],
+    function_params: &[typedlua_parser::ast::statement::Parameter<'arena>],
+    arg_types: &[Type<'arena>],
 ) -> Result<Vec<Type<'arena>>, String> {
     if function_params.len() != arg_types.len() {
         return Err(format!(
@@ -294,7 +296,7 @@ pub fn infer_type_arguments<'arena>(
             inferred
                 .get(&type_param.name.node)
                 .cloned()
-                .or_else(|| type_param.default.as_ref().map(|d| (**d).clone()))
+                .or_else(|| type_param.default.map(|d| d.clone()))
                 .ok_or_else(|| {
                     format!(
                         "Could not infer type argument for parameter '{:?}'",
@@ -380,8 +382,8 @@ fn types_equal<'arena>(t1: &Type<'arena>, t2: &Type<'arena>) -> bool {
 
 /// Build a substitution map from type parameters and type arguments
 pub fn build_substitutions<'arena>(
-    type_params: &[TypeParameter],
-    type_args: &[Type],
+    type_params: &[TypeParameter<'arena>],
+    type_args: &[Type<'arena>],
 ) -> Result<FxHashMap<StringId, Type<'arena>>, String> {
     if type_params.len() != type_args.len() {
         return Err(format!(
@@ -401,26 +403,29 @@ pub fn build_substitutions<'arena>(
 /// Instantiate a block with type substitutions
 /// Clones the block and substitutes type annotations in all statements
 pub fn instantiate_block<'arena>(
-    block: &typedlua_parser::ast::statement::Block,
+    arena: &'arena bumpalo::Bump,
+    block: &typedlua_parser::ast::statement::Block<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Block {
+) -> typedlua_parser::ast::statement::Block<'arena> {
     use typedlua_parser::ast::statement::Block;
 
+    let stmts: Vec<_> = block
+        .statements
+        .iter()
+        .map(|stmt| instantiate_statement(arena, stmt, substitutions))
+        .collect();
     Block {
-        statements: block
-            .statements
-            .iter()
-            .map(|stmt| instantiate_statement(stmt, substitutions))
-            .collect(),
+        statements: arena.alloc_slice_fill_iter(stmts),
         span: block.span,
     }
 }
 
 /// Instantiate a statement with type substitutions
 pub fn instantiate_statement<'arena>(
-    stmt: &typedlua_parser::ast::statement::Statement,
+    arena: &'arena bumpalo::Bump,
+    stmt: &typedlua_parser::ast::statement::Statement<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Statement {
+) -> typedlua_parser::ast::statement::Statement<'arena> {
     use typedlua_parser::ast::statement::{
         ElseIf, ForGeneric, ForNumeric, ForStatement, IfStatement, RepeatStatement,
         ReturnStatement, Statement, ThrowStatement, VariableDeclaration, WhileStatement,
@@ -433,87 +438,102 @@ pub fn instantiate_statement<'arena>(
             type_annotation: var_decl
                 .type_annotation
                 .as_ref()
-                .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
-            initializer: instantiate_expression(&var_decl.initializer, substitutions),
+                .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
+            initializer: instantiate_expression(arena, &var_decl.initializer, substitutions),
             span: var_decl.span,
         }),
 
         Statement::Function(func_decl) => {
-            Statement::Function(instantiate_function_declaration(func_decl, substitutions))
+            Statement::Function(instantiate_function_declaration(arena, func_decl, substitutions))
         }
 
         Statement::Expression(expr) => {
-            Statement::Expression(instantiate_expression(expr, substitutions))
+            Statement::Expression(instantiate_expression(arena, expr, substitutions))
         }
 
-        Statement::Return(ret) => Statement::Return(ReturnStatement {
-            values: ret
+        Statement::Return(ret) => {
+            let values: Vec<_> = ret
                 .values
                 .iter()
-                .map(|e| instantiate_expression(e, substitutions))
-                .collect(),
-            span: ret.span,
-        }),
+                .map(|e| instantiate_expression(arena, e, substitutions))
+                .collect();
+            Statement::Return(ReturnStatement {
+                values: arena.alloc_slice_fill_iter(values),
+                span: ret.span,
+            })
+        }
 
-        Statement::If(if_stmt) => Statement::If(IfStatement {
-            condition: instantiate_expression(&if_stmt.condition, substitutions),
-            then_block: instantiate_block(&if_stmt.then_block, substitutions),
-            else_ifs: if_stmt
+        Statement::If(if_stmt) => {
+            let else_ifs: Vec<_> = if_stmt
                 .else_ifs
                 .iter()
                 .map(|elif| ElseIf {
-                    condition: instantiate_expression(&elif.condition, substitutions),
-                    block: instantiate_block(&elif.block, substitutions),
+                    condition: instantiate_expression(arena, &elif.condition, substitutions),
+                    block: instantiate_block(arena, &elif.block, substitutions),
                     span: elif.span,
                 })
-                .collect(),
-            else_block: if_stmt
-                .else_block
-                .as_ref()
-                .map(|b| instantiate_block(b, substitutions)),
-            span: if_stmt.span,
-        }),
+                .collect();
+            Statement::If(IfStatement {
+                condition: instantiate_expression(arena, &if_stmt.condition, substitutions),
+                then_block: instantiate_block(arena, &if_stmt.then_block, substitutions),
+                else_ifs: arena.alloc_slice_fill_iter(else_ifs),
+                else_block: if_stmt
+                    .else_block
+                    .as_ref()
+                    .map(|b| instantiate_block(arena, b, substitutions)),
+                span: if_stmt.span,
+            })
+        }
 
         Statement::While(while_stmt) => Statement::While(WhileStatement {
-            condition: instantiate_expression(&while_stmt.condition, substitutions),
-            body: instantiate_block(&while_stmt.body, substitutions),
+            condition: instantiate_expression(arena, &while_stmt.condition, substitutions),
+            body: instantiate_block(arena, &while_stmt.body, substitutions),
             span: while_stmt.span,
         }),
 
-        Statement::For(for_stmt) => Statement::For(Box::new(match for_stmt.as_ref() {
-            ForStatement::Numeric(num) => ForStatement::Numeric(Box::new(ForNumeric {
-                variable: num.variable.clone(),
-                start: instantiate_expression(&num.start, substitutions),
-                end: instantiate_expression(&num.end, substitutions),
-                step: num
-                    .step
-                    .as_ref()
-                    .map(|e| instantiate_expression(e, substitutions)),
-                body: instantiate_block(&num.body, substitutions),
-                span: num.span,
-            })),
-            ForStatement::Generic(gen) => ForStatement::Generic(ForGeneric {
-                variables: gen.variables.clone(),
-                iterators: gen
-                    .iterators
-                    .iter()
-                    .map(|e| instantiate_expression(e, substitutions))
-                    .collect(),
-                body: instantiate_block(&gen.body, substitutions),
-                span: gen.span,
-            }),
-        })),
+        Statement::For(for_stmt) => {
+            let new_for = match *for_stmt {
+                ForStatement::Numeric(num) => {
+                    let new_num = ForNumeric {
+                        variable: num.variable.clone(),
+                        start: instantiate_expression(arena, &num.start, substitutions),
+                        end: instantiate_expression(arena, &num.end, substitutions),
+                        step: num
+                            .step
+                            .as_ref()
+                            .map(|e| instantiate_expression(arena, e, substitutions)),
+                        body: instantiate_block(arena, &num.body, substitutions),
+                        span: num.span,
+                    };
+                    ForStatement::Numeric(arena.alloc(new_num))
+                }
+                ForStatement::Generic(ref gen) => {
+                    let iterators: Vec<_> = gen
+                        .iterators
+                        .iter()
+                        .map(|e| instantiate_expression(arena, e, substitutions))
+                        .collect();
+                    ForStatement::Generic(ForGeneric {
+                        variables: gen.variables,
+                        iterators: arena.alloc_slice_fill_iter(iterators),
+                        body: instantiate_block(arena, &gen.body, substitutions),
+                        span: gen.span,
+                    })
+                }
+            };
+            Statement::For(arena.alloc(new_for))
+        }
 
         Statement::Repeat(repeat) => Statement::Repeat(RepeatStatement {
-            body: instantiate_block(&repeat.body, substitutions),
-            until: instantiate_expression(&repeat.until, substitutions),
+            body: instantiate_block(arena, &repeat.body, substitutions),
+            until: instantiate_expression(arena, &repeat.until, substitutions),
             span: repeat.span,
         }),
 
-        Statement::Block(block) => Statement::Block(instantiate_block(block, substitutions)),
+        Statement::Block(block) => Statement::Block(instantiate_block(arena, block, substitutions)),
 
         Statement::Throw(throw) => Statement::Throw(ThrowStatement {
-            expression: instantiate_expression(&throw.expression, substitutions),
+            expression: instantiate_expression(arena, &throw.expression, substitutions),
             span: throw.span,
         }),
 
@@ -541,22 +561,24 @@ pub fn instantiate_statement<'arena>(
 
 /// Instantiate a function declaration with type substitutions
 pub fn instantiate_function_declaration<'arena>(
-    func: &typedlua_parser::ast::statement::FunctionDeclaration,
+    arena: &'arena bumpalo::Bump,
+    func: &typedlua_parser::ast::statement::FunctionDeclaration<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::FunctionDeclaration {
+) -> typedlua_parser::ast::statement::FunctionDeclaration<'arena> {
+    let params: Vec<_> = func
+        .parameters
+        .iter()
+        .map(|p| instantiate_parameter(arena, p, substitutions))
+        .collect();
     typedlua_parser::ast::statement::FunctionDeclaration {
         name: func.name.clone(),
         type_parameters: None, // Remove type parameters after specialization
-        parameters: func
-            .parameters
-            .iter()
-            .map(|p| instantiate_parameter(p, substitutions))
-            .collect(),
+        parameters: arena.alloc_slice_fill_iter(params),
         return_type: func
             .return_type
             .as_ref()
-            .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
-        body: instantiate_block(&func.body, substitutions),
+            .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
+        body: instantiate_block(arena, &func.body, substitutions),
         throws: func.throws.clone(),
         span: func.span,
     }
@@ -564,19 +586,20 @@ pub fn instantiate_function_declaration<'arena>(
 
 /// Instantiate a parameter with type substitutions
 pub fn instantiate_parameter<'arena>(
-    param: &typedlua_parser::ast::statement::Parameter,
+    arena: &'arena bumpalo::Bump,
+    param: &typedlua_parser::ast::statement::Parameter<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Parameter {
+) -> typedlua_parser::ast::statement::Parameter<'arena> {
     typedlua_parser::ast::statement::Parameter {
         pattern: param.pattern.clone(),
         type_annotation: param
             .type_annotation
             .as_ref()
-            .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
+            .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
         default: param
             .default
             .as_ref()
-            .map(|e| instantiate_expression(e, substitutions)),
+            .map(|e| instantiate_expression(arena, e, substitutions)),
         is_rest: param.is_rest,
         is_optional: param.is_optional,
         span: param.span,
@@ -585,9 +608,10 @@ pub fn instantiate_parameter<'arena>(
 
 /// Instantiate an expression with type substitutions
 pub fn instantiate_expression<'arena>(
-    expr: &typedlua_parser::ast::expression::Expression,
+    arena: &'arena bumpalo::Bump,
+    expr: &typedlua_parser::ast::expression::Expression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::Expression {
+) -> typedlua_parser::ast::expression::Expression<'arena> {
     use typedlua_parser::ast::expression::{Expression, ExpressionKind};
 
     let new_kind = match &expr.kind {
@@ -596,162 +620,187 @@ pub fn instantiate_expression<'arena>(
 
         ExpressionKind::Binary(op, left, right) => ExpressionKind::Binary(
             *op,
-            Box::new(instantiate_expression(left, substitutions)),
-            Box::new(instantiate_expression(right, substitutions)),
+            arena.alloc(instantiate_expression(arena, left, substitutions)),
+            arena.alloc(instantiate_expression(arena, right, substitutions)),
         ),
 
         ExpressionKind::Unary(op, operand) => ExpressionKind::Unary(
             *op,
-            Box::new(instantiate_expression(operand, substitutions)),
+            arena.alloc(instantiate_expression(arena, operand, substitutions)),
         ),
 
         ExpressionKind::Assignment(target, op, value) => ExpressionKind::Assignment(
-            Box::new(instantiate_expression(target, substitutions)),
+            arena.alloc(instantiate_expression(arena, target, substitutions)),
             *op,
-            Box::new(instantiate_expression(value, substitutions)),
+            arena.alloc(instantiate_expression(arena, value, substitutions)),
         ),
 
-        ExpressionKind::Call(callee, args, type_args) => ExpressionKind::Call(
-            Box::new(instantiate_expression(callee, substitutions)),
-            args.iter()
-                .map(|a| instantiate_argument(a, substitutions))
-                .collect(),
-            type_args.as_ref().map(|tas| {
-                tas.iter()
-                    .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone()))
-                    .collect()
-            }),
-        ),
+        ExpressionKind::Call(callee, args, type_args) => {
+            let new_args: Vec<_> = args.iter()
+                .map(|a| instantiate_argument(arena, a, substitutions))
+                .collect();
+            let new_type_args = type_args.as_ref().map(|tas| {
+                let v: Vec<_> = tas.iter()
+                    .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
+                    .collect();
+                arena.alloc_slice_fill_iter(v) as &[_]
+            });
+            ExpressionKind::Call(
+                arena.alloc(instantiate_expression(arena, callee, substitutions)),
+                arena.alloc_slice_fill_iter(new_args),
+                new_type_args,
+            )
+        }
 
-        ExpressionKind::MethodCall(obj, method, args, type_args) => ExpressionKind::MethodCall(
-            Box::new(instantiate_expression(obj, substitutions)),
-            method.clone(),
-            args.iter()
-                .map(|a| instantiate_argument(a, substitutions))
-                .collect(),
-            type_args.as_ref().map(|tas| {
-                tas.iter()
-                    .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone()))
-                    .collect()
-            }),
-        ),
+        ExpressionKind::MethodCall(obj, method, args, type_args) => {
+            let new_args: Vec<_> = args.iter()
+                .map(|a| instantiate_argument(arena, a, substitutions))
+                .collect();
+            let new_type_args = type_args.as_ref().map(|tas| {
+                let v: Vec<_> = tas.iter()
+                    .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
+                    .collect();
+                arena.alloc_slice_fill_iter(v) as &[_]
+            });
+            ExpressionKind::MethodCall(
+                arena.alloc(instantiate_expression(arena, obj, substitutions)),
+                method.clone(),
+                arena.alloc_slice_fill_iter(new_args),
+                new_type_args,
+            )
+        }
 
         ExpressionKind::Member(obj, member) => ExpressionKind::Member(
-            Box::new(instantiate_expression(obj, substitutions)),
+            arena.alloc(instantiate_expression(arena, obj, substitutions)),
             member.clone(),
         ),
 
         ExpressionKind::Index(obj, index) => ExpressionKind::Index(
-            Box::new(instantiate_expression(obj, substitutions)),
-            Box::new(instantiate_expression(index, substitutions)),
+            arena.alloc(instantiate_expression(arena, obj, substitutions)),
+            arena.alloc(instantiate_expression(arena, index, substitutions)),
         ),
 
-        ExpressionKind::Array(elements) => ExpressionKind::Array(
-            elements
+        ExpressionKind::Array(elements) => {
+            let elems: Vec<_> = elements
                 .iter()
-                .map(|elem| instantiate_array_element(elem, substitutions))
-                .collect(),
-        ),
+                .map(|elem| instantiate_array_element(arena, elem, substitutions))
+                .collect();
+            ExpressionKind::Array(arena.alloc_slice_fill_iter(elems))
+        }
 
-        ExpressionKind::Object(props) => ExpressionKind::Object(
-            props
+        ExpressionKind::Object(props) => {
+            let new_props: Vec<_> = props
                 .iter()
-                .map(|prop| instantiate_object_property(prop, substitutions))
-                .collect(),
-        ),
+                .map(|prop| instantiate_object_property(arena, prop, substitutions))
+                .collect();
+            ExpressionKind::Object(arena.alloc_slice_fill_iter(new_props))
+        }
 
         ExpressionKind::Function(func) => {
-            ExpressionKind::Function(instantiate_function_expression(func, substitutions))
+            ExpressionKind::Function(instantiate_function_expression(arena, func, substitutions))
         }
 
         ExpressionKind::Arrow(arrow) => {
-            ExpressionKind::Arrow(instantiate_arrow_function(arrow, substitutions))
+            ExpressionKind::Arrow(instantiate_arrow_function(arena, arrow, substitutions))
         }
 
         ExpressionKind::Conditional(cond, then_expr, else_expr) => ExpressionKind::Conditional(
-            Box::new(instantiate_expression(cond, substitutions)),
-            Box::new(instantiate_expression(then_expr, substitutions)),
-            Box::new(instantiate_expression(else_expr, substitutions)),
+            arena.alloc(instantiate_expression(arena, cond, substitutions)),
+            arena.alloc(instantiate_expression(arena, then_expr, substitutions)),
+            arena.alloc(instantiate_expression(arena, else_expr, substitutions)),
         ),
 
         ExpressionKind::Pipe(left, right) => ExpressionKind::Pipe(
-            Box::new(instantiate_expression(left, substitutions)),
-            Box::new(instantiate_expression(right, substitutions)),
+            arena.alloc(instantiate_expression(arena, left, substitutions)),
+            arena.alloc(instantiate_expression(arena, right, substitutions)),
         ),
 
         ExpressionKind::Match(match_expr) => {
-            ExpressionKind::Match(instantiate_match_expression(match_expr, substitutions))
+            ExpressionKind::Match(instantiate_match_expression(arena, match_expr, substitutions))
         }
 
         ExpressionKind::Parenthesized(inner) => {
-            ExpressionKind::Parenthesized(Box::new(instantiate_expression(inner, substitutions)))
+            ExpressionKind::Parenthesized(arena.alloc(instantiate_expression(arena, inner, substitutions)))
         }
 
         ExpressionKind::TypeAssertion(expr_inner, typ) => ExpressionKind::TypeAssertion(
-            Box::new(instantiate_expression(expr_inner, substitutions)),
-            substitute_type(typ, substitutions).unwrap_or_else(|_| typ.clone()),
+            arena.alloc(instantiate_expression(arena, expr_inner, substitutions)),
+            substitute_type(arena, typ, substitutions).unwrap_or_else(|_| typ.clone()),
         ),
 
         ExpressionKind::OptionalMember(obj, member) => ExpressionKind::OptionalMember(
-            Box::new(instantiate_expression(obj, substitutions)),
+            arena.alloc(instantiate_expression(arena, obj, substitutions)),
             member.clone(),
         ),
 
         ExpressionKind::OptionalIndex(obj, index) => ExpressionKind::OptionalIndex(
-            Box::new(instantiate_expression(obj, substitutions)),
-            Box::new(instantiate_expression(index, substitutions)),
+            arena.alloc(instantiate_expression(arena, obj, substitutions)),
+            arena.alloc(instantiate_expression(arena, index, substitutions)),
         ),
 
-        ExpressionKind::OptionalCall(callee, args, type_args) => ExpressionKind::OptionalCall(
-            Box::new(instantiate_expression(callee, substitutions)),
-            args.iter()
-                .map(|a| instantiate_argument(a, substitutions))
-                .collect(),
-            type_args.as_ref().map(|tas| {
-                tas.iter()
-                    .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone()))
-                    .collect()
-            }),
-        ),
+        ExpressionKind::OptionalCall(callee, args, type_args) => {
+            let new_args: Vec<_> = args.iter()
+                .map(|a| instantiate_argument(arena, a, substitutions))
+                .collect();
+            let new_type_args = type_args.as_ref().map(|tas| {
+                let v: Vec<_> = tas.iter()
+                    .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
+                    .collect();
+                arena.alloc_slice_fill_iter(v) as &[_]
+            });
+            ExpressionKind::OptionalCall(
+                arena.alloc(instantiate_expression(arena, callee, substitutions)),
+                arena.alloc_slice_fill_iter(new_args),
+                new_type_args,
+            )
+        }
 
         ExpressionKind::OptionalMethodCall(obj, method, args, type_args) => {
+            let new_args: Vec<_> = args.iter()
+                .map(|a| instantiate_argument(arena, a, substitutions))
+                .collect();
+            let new_type_args = type_args.as_ref().map(|tas| {
+                let v: Vec<_> = tas.iter()
+                    .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
+                    .collect();
+                arena.alloc_slice_fill_iter(v) as &[_]
+            });
             ExpressionKind::OptionalMethodCall(
-                Box::new(instantiate_expression(obj, substitutions)),
+                arena.alloc(instantiate_expression(arena, obj, substitutions)),
                 method.clone(),
-                args.iter()
-                    .map(|a| instantiate_argument(a, substitutions))
-                    .collect(),
-                type_args.as_ref().map(|tas| {
-                    tas.iter()
-                        .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone()))
-                        .collect()
-                }),
+                arena.alloc_slice_fill_iter(new_args),
+                new_type_args,
             )
         }
 
         ExpressionKind::Template(template) => {
-            ExpressionKind::Template(instantiate_template_literal(template, substitutions))
+            ExpressionKind::Template(instantiate_template_literal(arena, template, substitutions))
         }
 
-        ExpressionKind::New(callee, args, type_args) => ExpressionKind::New(
-            Box::new(instantiate_expression(callee, substitutions)),
-            args.iter()
-                .map(|a| instantiate_argument(a, substitutions))
-                .collect(),
-            type_args.as_ref().map(|tas| {
-                tas.iter()
-                    .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone()))
-                    .collect()
-            }),
-        ),
+        ExpressionKind::New(callee, args, type_args) => {
+            let new_args: Vec<_> = args.iter()
+                .map(|a| instantiate_argument(arena, a, substitutions))
+                .collect();
+            let new_type_args = type_args.as_ref().map(|tas| {
+                let v: Vec<_> = tas.iter()
+                    .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
+                    .collect();
+                arena.alloc_slice_fill_iter(v) as &[_]
+            });
+            ExpressionKind::New(
+                arena.alloc(instantiate_expression(arena, callee, substitutions)),
+                arena.alloc_slice_fill_iter(new_args),
+                new_type_args,
+            )
+        }
 
         ExpressionKind::Try(try_expr) => {
-            ExpressionKind::Try(instantiate_try_expression(try_expr, substitutions))
+            ExpressionKind::Try(instantiate_try_expression(arena, try_expr, substitutions))
         }
 
         ExpressionKind::ErrorChain(left, right) => ExpressionKind::ErrorChain(
-            Box::new(instantiate_expression(left, substitutions)),
-            Box::new(instantiate_expression(right, substitutions)),
+            arena.alloc(instantiate_expression(arena, left, substitutions)),
+            arena.alloc(instantiate_expression(arena, right, substitutions)),
         ),
 
         // Simple expression kinds - clone as-is
@@ -765,18 +814,19 @@ pub fn instantiate_expression<'arena>(
         annotated_type: expr
             .annotated_type
             .as_ref()
-            .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
+            .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
         receiver_class: expr.receiver_class.clone(),
     }
 }
 
 /// Helper to instantiate an argument
 fn instantiate_argument<'arena>(
-    arg: &typedlua_parser::ast::expression::Argument,
+    arena: &'arena bumpalo::Bump,
+    arg: &typedlua_parser::ast::expression::Argument<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::Argument {
+) -> typedlua_parser::ast::expression::Argument<'arena> {
     typedlua_parser::ast::expression::Argument {
-        value: instantiate_expression(&arg.value, substitutions),
+        value: instantiate_expression(arena, &arg.value, substitutions),
         is_spread: arg.is_spread,
         span: arg.span,
     }
@@ -784,37 +834,39 @@ fn instantiate_argument<'arena>(
 
 /// Helper to instantiate an array element
 fn instantiate_array_element<'arena>(
-    elem: &typedlua_parser::ast::expression::ArrayElement,
+    arena: &'arena bumpalo::Bump,
+    elem: &typedlua_parser::ast::expression::ArrayElement<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ArrayElement {
+) -> typedlua_parser::ast::expression::ArrayElement<'arena> {
     use typedlua_parser::ast::expression::ArrayElement;
     match elem {
         ArrayElement::Expression(e) => {
-            ArrayElement::Expression(instantiate_expression(e, substitutions))
+            ArrayElement::Expression(instantiate_expression(arena, e, substitutions))
         }
-        ArrayElement::Spread(e) => ArrayElement::Spread(instantiate_expression(e, substitutions)),
+        ArrayElement::Spread(e) => ArrayElement::Spread(instantiate_expression(arena, e, substitutions)),
     }
 }
 
 /// Helper to instantiate an object property
 fn instantiate_object_property<'arena>(
-    prop: &typedlua_parser::ast::expression::ObjectProperty,
+    arena: &'arena bumpalo::Bump,
+    prop: &typedlua_parser::ast::expression::ObjectProperty<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ObjectProperty {
+) -> typedlua_parser::ast::expression::ObjectProperty<'arena> {
     use typedlua_parser::ast::expression::ObjectProperty;
     match prop {
         ObjectProperty::Property { key, value, span } => ObjectProperty::Property {
             key: key.clone(),
-            value: Box::new(instantiate_expression(value, substitutions)),
+            value: arena.alloc(instantiate_expression(arena, value, substitutions)),
             span: *span,
         },
         ObjectProperty::Computed { key, value, span } => ObjectProperty::Computed {
-            key: Box::new(instantiate_expression(key, substitutions)),
-            value: Box::new(instantiate_expression(value, substitutions)),
+            key: arena.alloc(instantiate_expression(arena, key, substitutions)),
+            value: arena.alloc(instantiate_expression(arena, value, substitutions)),
             span: *span,
         },
         ObjectProperty::Spread { value, span } => ObjectProperty::Spread {
-            value: Box::new(instantiate_expression(value, substitutions)),
+            value: arena.alloc(instantiate_expression(arena, value, substitutions)),
             span: *span,
         },
     }
@@ -822,46 +874,50 @@ fn instantiate_object_property<'arena>(
 
 /// Helper to instantiate a function expression
 fn instantiate_function_expression<'arena>(
-    func: &typedlua_parser::ast::expression::FunctionExpression,
+    arena: &'arena bumpalo::Bump,
+    func: &typedlua_parser::ast::expression::FunctionExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::FunctionExpression {
+) -> typedlua_parser::ast::expression::FunctionExpression<'arena> {
+    let params: Vec<_> = func
+        .parameters
+        .iter()
+        .map(|p| instantiate_parameter(arena, p, substitutions))
+        .collect();
     typedlua_parser::ast::expression::FunctionExpression {
         type_parameters: None, // Remove type parameters after specialization
-        parameters: func
-            .parameters
-            .iter()
-            .map(|p| instantiate_parameter(p, substitutions))
-            .collect(),
+        parameters: arena.alloc_slice_fill_iter(params),
         return_type: func
             .return_type
             .as_ref()
-            .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
-        body: instantiate_block(&func.body, substitutions),
+            .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
+        body: instantiate_block(arena, &func.body, substitutions),
         span: func.span,
     }
 }
 
 /// Helper to instantiate an arrow function
 fn instantiate_arrow_function<'arena>(
-    arrow: &typedlua_parser::ast::expression::ArrowFunction,
+    arena: &'arena bumpalo::Bump,
+    arrow: &typedlua_parser::ast::expression::ArrowFunction<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ArrowFunction {
+) -> typedlua_parser::ast::expression::ArrowFunction<'arena> {
     use typedlua_parser::ast::expression::{ArrowBody, ArrowFunction};
+    let params: Vec<_> = arrow
+        .parameters
+        .iter()
+        .map(|p| instantiate_parameter(arena, p, substitutions))
+        .collect();
     ArrowFunction {
-        parameters: arrow
-            .parameters
-            .iter()
-            .map(|p| instantiate_parameter(p, substitutions))
-            .collect(),
+        parameters: arena.alloc_slice_fill_iter(params),
         return_type: arrow
             .return_type
             .as_ref()
-            .map(|t| substitute_type(t, substitutions).unwrap_or_else(|_| t.clone())),
+            .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone())),
         body: match &arrow.body {
             ArrowBody::Expression(e) => {
-                ArrowBody::Expression(Box::new(instantiate_expression(e.as_ref(), substitutions)))
+                ArrowBody::Expression(arena.alloc(instantiate_expression(arena, e, substitutions)))
             }
-            ArrowBody::Block(b) => ArrowBody::Block(instantiate_block(b, substitutions)),
+            ArrowBody::Block(b) => ArrowBody::Block(instantiate_block(arena, b, substitutions)),
         },
         span: arrow.span,
     }
@@ -869,66 +925,72 @@ fn instantiate_arrow_function<'arena>(
 
 /// Helper to instantiate a template literal
 fn instantiate_template_literal<'arena>(
-    template: &typedlua_parser::ast::expression::TemplateLiteral,
+    arena: &'arena bumpalo::Bump,
+    template: &typedlua_parser::ast::expression::TemplateLiteral<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::TemplateLiteral {
+) -> typedlua_parser::ast::expression::TemplateLiteral<'arena> {
     use typedlua_parser::ast::expression::{TemplateLiteral, TemplatePart};
+    let parts: Vec<_> = template
+        .parts
+        .iter()
+        .map(|part| match part {
+            TemplatePart::String(s) => TemplatePart::String(s.clone()),
+            TemplatePart::Expression(e) => {
+                TemplatePart::Expression(arena.alloc(instantiate_expression(arena, e, substitutions)))
+            }
+        })
+        .collect();
     TemplateLiteral {
-        parts: template
-            .parts
-            .iter()
-            .map(|part| match part {
-                TemplatePart::String(s) => TemplatePart::String(s.clone()),
-                TemplatePart::Expression(e) => {
-                    TemplatePart::Expression(Box::new(instantiate_expression(e, substitutions)))
-                }
-            })
-            .collect(),
+        parts: arena.alloc_slice_fill_iter(parts),
         span: template.span,
     }
 }
 
 /// Helper to instantiate a match expression
 fn instantiate_match_expression<'arena>(
-    match_expr: &typedlua_parser::ast::expression::MatchExpression,
+    arena: &'arena bumpalo::Bump,
+    match_expr: &typedlua_parser::ast::expression::MatchExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::MatchExpression {
+) -> typedlua_parser::ast::expression::MatchExpression<'arena> {
     use typedlua_parser::ast::expression::{MatchArm, MatchArmBody, MatchExpression};
+    let arms: Vec<_> = match_expr
+        .arms
+        .iter()
+        .map(|arm| MatchArm {
+            pattern: arm.pattern.clone(),
+            guard: arm
+                .guard
+                .as_ref()
+                .map(|e| instantiate_expression(arena, e, substitutions)),
+            body: match &arm.body {
+                MatchArmBody::Expression(e) => {
+                    MatchArmBody::Expression(arena.alloc(instantiate_expression(arena, e, substitutions)))
+                }
+                MatchArmBody::Block(b) => {
+                    MatchArmBody::Block(instantiate_block(arena, b, substitutions))
+                }
+            },
+            span: arm.span,
+        })
+        .collect();
     MatchExpression {
-        value: Box::new(instantiate_expression(&match_expr.value, substitutions)),
-        arms: match_expr
-            .arms
-            .iter()
-            .map(|arm| MatchArm {
-                pattern: arm.pattern.clone(),
-                guard: arm
-                    .guard
-                    .as_ref()
-                    .map(|e| instantiate_expression(e, substitutions)),
-                body: match &arm.body {
-                    MatchArmBody::Expression(e) => {
-                        MatchArmBody::Expression(Box::new(instantiate_expression(e, substitutions)))
-                    }
-                    MatchArmBody::Block(b) => {
-                        MatchArmBody::Block(instantiate_block(b, substitutions))
-                    }
-                },
-                span: arm.span,
-            })
-            .collect(),
+        value: arena.alloc(instantiate_expression(arena, &match_expr.value, substitutions)),
+        arms: arena.alloc_slice_fill_iter(arms),
         span: match_expr.span,
     }
 }
 
 /// Helper to instantiate a try expression
 fn instantiate_try_expression<'arena>(
-    try_expr: &typedlua_parser::ast::expression::TryExpression,
+    arena: &'arena bumpalo::Bump,
+    try_expr: &typedlua_parser::ast::expression::TryExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::TryExpression {
+) -> typedlua_parser::ast::expression::TryExpression<'arena> {
     typedlua_parser::ast::expression::TryExpression {
-        expression: Box::new(instantiate_expression(&try_expr.expression, substitutions)),
+        expression: arena.alloc(instantiate_expression(arena, &try_expr.expression, substitutions)),
         catch_variable: try_expr.catch_variable.clone(),
-        catch_expression: Box::new(instantiate_expression(
+        catch_expression: arena.alloc(instantiate_expression(
+            arena,
             &try_expr.catch_expression,
             substitutions,
         )),
