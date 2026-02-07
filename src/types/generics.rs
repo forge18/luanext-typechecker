@@ -515,6 +515,7 @@ pub fn instantiate_statement<'arena>(
                         .collect();
                     ForStatement::Generic(ForGeneric {
                         variables: gen.variables,
+                        pattern: gen.pattern.clone(),
                         iterators: arena.alloc_slice_fill_iter(iterators),
                         body: instantiate_block(arena, &gen.body, substitutions),
                         span: gen.span,
