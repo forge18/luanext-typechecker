@@ -274,15 +274,23 @@ impl<'arena> AccessControlVisitor<'arena> for AccessControl<'arena> {
         } else {
             // Check if class exists in access control
             if !self.class_members.contains_key(class_name) {
-                // Class not registered in access control - this may be a type alias,
-                // interface, or other non-class type. Allow access; the type resolver
-                // will handle member lookup or report errors downstream.
-                return Ok(());
+                return Err(TypeCheckError::new(
+                    format!(
+                        "Class '{}' does not exist",
+                        class_name
+                    ),
+                    span,
+                ));
             }
 
-            // Class exists but member not found - allow access since the member
-            // might be resolved through type environment or parent classes
-            Ok(())
+            // Class exists but member not found
+            Err(TypeCheckError::new(
+                format!(
+                    "Property '{}' does not exist on class '{}'",
+                    member_name, class_name
+                ),
+                span,
+            ))
         }
     }
 
