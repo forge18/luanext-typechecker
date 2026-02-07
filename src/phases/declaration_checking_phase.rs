@@ -49,7 +49,7 @@ pub fn check_type_alias<'arena>(
     type_env: &mut TypeEnvironment<'arena>,
     symbol_table: &mut SymbolTable<'arena>,
     interner: &StringInterner,
-    evaluated_type: Option<Type>,
+    evaluated_type: Option<Type<'arena>>,
 ) -> Result<(), TypeCheckError> {
     let alias_name = interner.resolve(alias.name.node).to_string();
 
@@ -411,7 +411,7 @@ pub fn check_rich_enum_declaration<'arena>(
     type_env: &mut TypeEnvironment<'arena>,
     access_control: &mut AccessControl,
     interner: &StringInterner,
-) -> Result<Type, TypeCheckError> {
+) -> Result<Type<'arena>, TypeCheckError> {
     use rustc_hash::FxHashMap;
 
     let enum_name = interner.resolve(enum_decl.name.node).to_string();
@@ -513,7 +513,7 @@ pub fn register_class_symbol<'arena>(
         Vec<typedlua_parser::ast::statement::TypeParameter>,
     >,
     interner: &StringInterner,
-) -> Result<Type, TypeCheckError> {
+) -> Result<Type<'arena>, TypeCheckError> {
     let class_name = interner.resolve(class_decl.name.node).to_string();
 
     // Register the class name as a symbol in the symbol table so `new ClassName()` works

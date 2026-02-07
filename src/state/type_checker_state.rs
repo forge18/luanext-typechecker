@@ -35,9 +35,9 @@ pub struct TypeCheckerState<'a, 'arena> {
     /// Current function's return type (for return statement validation)
     pub current_function_return_type: Option<Type<'arena>>,
     /// Type narrowing state for control flow analysis
-    pub narrowing: TypeNarrower,
+    pub narrowing: TypeNarrower<'arena>,
     /// Access control for class inheritance and visibility
-    pub access_control: AccessControl,
+    pub access_control: AccessControl<'arena>,
     /// Compiler options (target version, optimization level, etc.)
     pub options: CompilerOptions,
     /// Diagnostic handler for reporting errors and warnings

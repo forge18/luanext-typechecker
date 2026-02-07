@@ -8,22 +8,22 @@ use typedlua_parser::span::Span;
 
 /// Information about a class member for access checking
 #[derive(Clone)]
-pub struct ClassMemberInfo {
+pub struct ClassMemberInfo<'arena> {
     pub(crate) name: String,
     pub(crate) access: AccessModifier,
     pub(crate) _is_static: bool,
-    pub(crate) kind: ClassMemberKind,
+    pub(crate) kind: ClassMemberKind<'arena>,
     pub(crate) is_final: bool,
 }
 
 #[derive(Clone)]
-pub enum ClassMemberKind {
+pub enum ClassMemberKind<'arena> {
     Property {
         type_annotation: Type<'arena>,
     },
     Method {
         parameters: Vec<Parameter<'arena>>,
-        return_type: Option<Type>,
+        return_type: Option<Type<'arena>>,
         is_abstract: bool,
     },
     Getter {
@@ -35,25 +35,25 @@ pub enum ClassMemberKind {
     Operator {
         operator: OperatorKind,
         parameters: Vec<Parameter<'arena>>,
-        return_type: Option<Type>,
+        return_type: Option<Type<'arena>>,
     },
 }
 
 /// Context for tracking the current class during type checking
 #[derive(Clone)]
-pub struct ClassContext {
+pub struct ClassContext<'arena> {
     pub(crate) name: String,
     pub(crate) parent: Option<String>,
     /// The full extends type (preserves type arguments for generic parent classes)
-    pub(crate) extends_type: Option<typedlua_parser::ast::types::Type>,
+    pub(crate) extends_type: Option<typedlua_parser::ast::types::Type<'arena>>,
 }
 
 /// Trait for access control checks on class members
-pub trait AccessControlVisitor: TypeCheckVisitor {
+pub trait AccessControlVisitor<'arena>: TypeCheckVisitor {
     /// Check if access to a class member is allowed based on access modifier
     fn check_member_access(
         &self,
-        current_class: &Option<ClassContext>,
+        current_class: &Option<ClassContext<'arena>>,
         class_name: &str,
         member_name: &str,
         span: Span,
@@ -66,7 +66,7 @@ pub trait AccessControlVisitor: TypeCheckVisitor {
     fn register_class(&mut self, name: &str, parent: Option<String>);
 
     /// Register a class member
-    fn register_member(&mut self, class_name: &str, member: ClassMemberInfo);
+    fn register_member(&mut self, class_name: &str, member: ClassMemberInfo<'arena>);
 
     /// Mark a class as final
     fn mark_class_final(&mut self, name: &str, is_final: bool);
@@ -88,16 +88,16 @@ pub trait AccessControlVisitor: TypeCheckVisitor {
     ) -> Result<(), TypeCheckError>;
 
     /// Get class members
-    fn get_class_members(&self, class_name: &str) -> Option<&Vec<ClassMemberInfo>>;
+    fn get_class_members(&self, class_name: &str) -> Option<&Vec<ClassMemberInfo<'arena>>>;
 
     /// Get parent class name
     fn get_parent_class(&self, class_name: &str) -> Option<String>;
 
     /// Set current class context
-    fn set_current_class(&mut self, class: Option<ClassContext>);
+    fn set_current_class(&mut self, class: Option<ClassContext<'arena>>);
 
     /// Get current class context
-    fn get_current_class(&self) -> &Option<ClassContext>;
+    fn get_current_class(&self) -> &Option<ClassContext<'arena>>;
 
     /// Register the interfaces that a class implements
     fn register_class_implements(&mut self, class_name: &str, interfaces: Vec<String>);
@@ -107,17 +107,29 @@ pub trait AccessControlVisitor: TypeCheckVisitor {
 }
 
 /// Default implementation of access control
-#[derive(Default)]
-pub struct AccessControl {
-    class_members: FxHashMap<String, Vec<ClassMemberInfo>>,
+pub struct AccessControl<'arena> {
+    class_members: FxHashMap<String, Vec<ClassMemberInfo<'arena>>>,
     final_classes: FxHashMap<String, bool>,
     class_parents: FxHashMap<String, Option<String>>, // Store class hierarchy
     class_implements: FxHashMap<String, Vec<String>>, // Store class -> interfaces mapping
-    current_class: Option<ClassContext>,
+    current_class: Option<ClassContext<'arena>>,
     readonly_classes: FxHashMap<String, bool>, // Track classes with @readonly decorator
 }
 
-impl AccessControl {
+impl<'arena> Default for AccessControl<'arena> {
+    fn default() -> Self {
+        Self {
+            class_members: FxHashMap::default(),
+            final_classes: FxHashMap::default(),
+            class_parents: FxHashMap::default(),
+            class_implements: FxHashMap::default(),
+            current_class: None,
+            readonly_classes: FxHashMap::default(),
+        }
+    }
+}
+
+impl<'arena> AccessControl<'arena> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -128,7 +140,7 @@ impl AccessControl {
         &self,
         class_name: &str,
         member_name: &str,
-    ) -> Option<&ClassMemberInfo> {
+    ) -> Option<&ClassMemberInfo<'arena>> {
         let mut current = class_name;
         loop {
             if let Some(members) = self.class_members.get(current) {
@@ -162,7 +174,7 @@ impl AccessControl {
         &self,
         class_name: &str,
         member_name: &str,
-    ) -> Option<&ClassMemberInfo> {
+    ) -> Option<&ClassMemberInfo<'arena>> {
         if let Some(interfaces) = self.class_implements.get(class_name) {
             for interface_name in interfaces {
                 // Strip generic arguments from interface name
@@ -183,16 +195,16 @@ impl AccessControl {
     }
 }
 
-impl TypeCheckVisitor for AccessControl {
+impl<'arena> TypeCheckVisitor for AccessControl<'arena> {
     fn name(&self) -> &'static str {
         "AccessControl"
     }
 }
 
-impl AccessControlVisitor for AccessControl {
+impl<'arena> AccessControlVisitor for AccessControl<'arena> {
     fn check_member_access(
         &self,
-        current_class: &Option<ClassContext>,
+        current_class: &Option<ClassContext<'arena>>,
         class_name: &str,
         member_name: &str,
         span: Span,
@@ -303,7 +315,7 @@ impl AccessControlVisitor for AccessControl {
         self.class_parents.insert(name.to_string(), parent);
     }
 
-    fn register_member(&mut self, class_name: &str, member: ClassMemberInfo) {
+    fn register_member(&mut self, class_name: &str, member: ClassMemberInfo<'arena>) {
         if let Some(members) = self.class_members.get_mut(class_name) {
             members.push(member);
         }
@@ -350,7 +362,7 @@ impl AccessControlVisitor for AccessControl {
         Ok(())
     }
 
-    fn get_class_members(&self, class_name: &str) -> Option<&Vec<ClassMemberInfo>> {
+    fn get_class_members(&self, class_name: &str) -> Option<&Vec<ClassMemberInfo<'arena>>> {
         self.class_members.get(class_name)
     }
 
@@ -358,11 +370,11 @@ impl AccessControlVisitor for AccessControl {
         self.class_parents.get(class_name).cloned().flatten()
     }
 
-    fn set_current_class(&mut self, class: Option<ClassContext>) {
+    fn set_current_class(&mut self, class: Option<ClassContext<'arena>>) {
         self.current_class = class;
     }
 
-    fn get_current_class(&self) -> &Option<ClassContext> {
+    fn get_current_class(&self) -> &Option<ClassContext<'arena>> {
         &self.current_class
     }
 

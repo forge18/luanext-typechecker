@@ -15,6 +15,7 @@ pub trait NarrowingVisitor<'arena> {
     /// and the else_context contains types that apply when the condition is false.
     fn narrow_from_condition(
         &self,
+        arena: &'arena bumpalo::Bump,
         condition: &Expression<'arena>,
         base_ctx: &NarrowingContext<'arena>,
         original_types: &FxHashMap<StringId, Type<'arena>>,
@@ -109,12 +110,13 @@ impl<'arena> Default for TypeNarrower<'arena> {
 impl<'arena> NarrowingVisitor<'arena> for TypeNarrower<'arena> {
     fn narrow_from_condition(
         &self,
+        arena: &'arena bumpalo::Bump,
         condition: &Expression<'arena>,
         base_ctx: &NarrowingContext<'arena>,
         original_types: &FxHashMap<StringId, Type<'arena>>,
         interner: &typedlua_parser::string_interner::StringInterner,
     ) -> (NarrowingContext<'arena>, NarrowingContext<'arena>) {
-        narrow_type_from_condition(condition, base_ctx, original_types, interner)
+        narrow_type_from_condition(arena, condition, base_ctx, original_types, interner)
     }
 
     fn get_context(&self) -> &NarrowingContext<'arena> {
@@ -129,6 +131,7 @@ impl<'arena> NarrowingVisitor<'arena> for TypeNarrower<'arena> {
 /// Narrow a type based on a condition expression
 /// Returns (then_context, else_context) with refined types for each branch
 pub fn narrow_type_from_condition<'arena>(
+    arena: &'arena bumpalo::Bump,
     condition: &Expression<'arena>,
     base_ctx: &NarrowingContext<'arena>,
     original_types: &FxHashMap<StringId, Type<'arena>>,
@@ -146,7 +149,7 @@ pub fn narrow_type_from_condition<'arena>(
 
                     // In else branch, exclude the checked type
                     if let Some(original) = original_types.get(&var_name) {
-                        if let Some(else_type) = exclude_type(original, &narrowed_type) {
+                        if let Some(else_type) = exclude_type(arena, original, &narrowed_type) {
                             else_ctx.set_narrowed_type(var_name, else_type);
                         }
                     }
@@ -163,7 +166,7 @@ pub fn narrow_type_from_condition<'arena>(
 
                         // else: x is non-nil
                         if let Some(original) = original_types.get(&var_name) {
-                            if let Some(non_nil) = remove_nil_from_type(original) {
+                            if let Some(non_nil) = remove_nil_from_type(arena, original) {
                                 else_ctx.set_narrowed_type(var_name, non_nil);
                             }
                         }
@@ -180,7 +183,7 @@ pub fn narrow_type_from_condition<'arena>(
                     else_ctx.set_narrowed_type(var_name, narrowed_type.clone());
 
                     if let Some(original) = original_types.get(&var_name) {
-                        if let Some(then_type) = exclude_type(original, &narrowed_type) {
+                        if let Some(then_type) = exclude_type(arena, original, &narrowed_type) {
                             then_ctx.set_narrowed_type(var_name, then_type);
                         }
                     }
@@ -192,7 +195,7 @@ pub fn narrow_type_from_condition<'arena>(
                         // Flip for != operator
                         // then: x is non-nil
                         if let Some(original) = original_types.get(&var_name) {
-                            if let Some(non_nil) = remove_nil_from_type(original) {
+                            if let Some(non_nil) = remove_nil_from_type(arena, original) {
                                 then_ctx.set_narrowed_type(var_name, non_nil);
                             }
                         }
@@ -210,7 +213,7 @@ pub fn narrow_type_from_condition<'arena>(
         // not condition (flip the branches)
         ExpressionKind::Unary(UnaryOp::Not, operand) => {
             let (inner_then, inner_else) =
-                narrow_type_from_condition(operand, base_ctx, original_types, interner);
+                narrow_type_from_condition(arena, operand, base_ctx, original_types, interner);
             return (inner_else, inner_then); // Flip!
         }
 
@@ -218,11 +221,11 @@ pub fn narrow_type_from_condition<'arena>(
         ExpressionKind::Binary(BinaryOp::And, left, right) => {
             // First narrow with left condition
             let (left_then, _left_else) =
-                narrow_type_from_condition(left, base_ctx, original_types, interner);
+                narrow_type_from_condition(arena, left, base_ctx, original_types, interner);
 
             // Then narrow the 'then' branch with right condition
             let (final_then, _final_else) =
-                narrow_type_from_condition(right, &left_then, original_types, interner);
+                narrow_type_from_condition(arena, right, &left_then, original_types, interner);
 
             return (final_then, else_ctx);
         }
@@ -231,9 +234,9 @@ pub fn narrow_type_from_condition<'arena>(
         ExpressionKind::Binary(BinaryOp::Or, left, right) => {
             // For 'or', we narrow in the else branch with the right condition
             let (left_then, left_else) =
-                narrow_type_from_condition(left, base_ctx, original_types, interner);
+                narrow_type_from_condition(arena, left, base_ctx, original_types, interner);
             let (right_then, right_else) =
-                narrow_type_from_condition(right, &left_else, original_types, interner);
+                narrow_type_from_condition(arena, right, &left_else, original_types, interner);
 
             // Then branch: either left or right was true
             let merged_then = NarrowingContext::merge(&left_then, &right_then);
@@ -251,7 +254,7 @@ pub fn narrow_type_from_condition<'arena>(
 
                 // In else branch: exclude the guarded type
                 if let Some(original) = original_types.get(&var_name) {
-                    if let Some(else_type) = exclude_type(original, &narrowed_type) {
+                    if let Some(else_type) = exclude_type(arena, original, &narrowed_type) {
                         else_ctx.set_narrowed_type(var_name, else_type);
                     }
                 }
@@ -276,7 +279,7 @@ pub fn narrow_type_from_condition<'arena>(
 
                     // In else branch: exclude the class type
                     if let Some(original) = original_types.get(var_name) {
-                        if let Some(else_type) = exclude_type(original, &class_type) {
+                        if let Some(else_type) = exclude_type(arena, original, &class_type) {
                             else_ctx.set_narrowed_type(*var_name, else_type);
                         }
                     }
@@ -288,12 +291,12 @@ pub fn narrow_type_from_condition<'arena>(
         ExpressionKind::Identifier(name) => {
             if let Some(original) = original_types.get(name) {
                 // In then branch: x is truthy (non-nil, non-false)
-                if let Some(truthy_type) = make_truthy_type(original) {
+                if let Some(truthy_type) = make_truthy_type(arena, original) {
                     then_ctx.set_narrowed_type(*name, truthy_type);
                 }
 
                 // In else branch: x is falsy (nil or false)
-                if let Some(falsy_type) = make_falsy_type(original) {
+                if let Some(falsy_type) = make_falsy_type(arena, original) {
                     else_ctx.set_narrowed_type(*name, falsy_type);
                 }
             }
@@ -417,7 +420,7 @@ fn typeof_string_to_type<'arena>(type_name: &str) -> Option<Type<'arena>> {
 }
 
 /// Exclude a type from a union
-fn exclude_type<'arena>(typ: &Type<'arena>, to_exclude: &Type<'arena>) -> Option<Type<'arena>> {
+fn exclude_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, to_exclude: &Type<'arena>) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let remaining: Vec<Type<'arena>> = types
@@ -434,7 +437,7 @@ fn exclude_type<'arena>(typ: &Type<'arena>, to_exclude: &Type<'arena>) -> Option
             } else if remaining.len() == 1 {
                 Some(remaining.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(remaining), typ.span))
+                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&remaining)), typ.span))
             }
         }
         _ if types_equal(typ, to_exclude) => Some(Type::new(
@@ -446,7 +449,7 @@ fn exclude_type<'arena>(typ: &Type<'arena>, to_exclude: &Type<'arena>) -> Option
 }
 
 /// Remove nil from a type (for non-nil narrowing)
-fn remove_nil_from_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn remove_nil_from_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let remaining: Vec<Type<'arena>> = types.iter().filter(|t| !is_nil_type(t)).cloned().collect();
@@ -459,7 +462,7 @@ fn remove_nil_from_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
             } else if remaining.len() == 1 {
                 Some(remaining.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(remaining), typ.span))
+                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&remaining)), typ.span))
             }
         }
         _ if is_nil_type(typ) => Some(Type::new(
@@ -479,7 +482,7 @@ fn is_nil_type<'arena>(typ: &Type<'arena>) -> bool {
 }
 
 /// Make a type truthy (remove nil and false)
-fn make_truthy_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn make_truthy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let truthy: Vec<Type<'arena>> = types
@@ -496,7 +499,7 @@ fn make_truthy_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
             } else if truthy.len() == 1 {
                 Some(truthy.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(truthy), typ.span))
+                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&truthy)), typ.span))
             }
         }
         _ if is_falsy_type(typ) => Some(Type::new(
@@ -508,7 +511,7 @@ fn make_truthy_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
 }
 
 /// Make a type falsy (only nil or false)
-fn make_falsy_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn make_falsy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let falsy: Vec<Type<'arena>> = types.iter().filter(|t| is_falsy_type(t)).cloned().collect();
@@ -521,7 +524,7 @@ fn make_falsy_type<'arena>(typ: &Type<'arena>) -> Option<Type<'arena>> {
             } else if falsy.len() == 1 {
                 Some(falsy.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(falsy), typ.span))
+                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&falsy)), typ.span))
             }
         }
         _ if is_falsy_type(typ) => Some(typ.clone()),
@@ -604,15 +607,14 @@ mod tests {
 
     #[test]
     fn test_remove_nil_from_union() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
-        let non_nil = remove_nil_from_type(&union_type).unwrap();
+        let non_nil = remove_nil_from_type(&arena, &union_type).unwrap();
 
         assert!(matches!(
             non_nil.kind,
@@ -622,17 +624,16 @@ mod tests {
 
     #[test]
     fn test_make_truthy_type() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-                Type::new(TypeKind::Literal(Literal::Boolean(false)), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
+            Type::new(TypeKind::Literal(Literal::Boolean(false)), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
-        let truthy = make_truthy_type(&union_type).unwrap();
+        let truthy = make_truthy_type(&arena, &union_type).unwrap();
 
         if let TypeKind::Union(types) = &truthy.kind {
             assert_eq!(types.len(), 2); // string and number
@@ -768,18 +769,17 @@ mod tests {
 
     #[test]
     fn test_remove_nil_from_non_union() {
+        let arena = bumpalo::Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span());
 
-        // Non-nil type should remain unchanged
-        let result = remove_nil_from_type(&string_type).unwrap();
+        let result = remove_nil_from_type(&arena, &string_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
         ));
 
-        // Nil type should become Never
-        let result = remove_nil_from_type(&nil_type).unwrap();
+        let result = remove_nil_from_type(&arena, &nil_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -788,16 +788,14 @@ mod tests {
 
     #[test]
     fn test_remove_nil_results_in_single_type() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
-        let result = remove_nil_from_type(&union_type).unwrap();
-        // Should result in a single type, not a union
+        let result = remove_nil_from_type(&arena, &union_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -806,18 +804,17 @@ mod tests {
 
     #[test]
     fn test_make_truthy_type_non_union() {
+        let arena = bumpalo::Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span());
 
-        // Truthy type should remain unchanged
-        let result = make_truthy_type(&string_type).unwrap();
+        let result = make_truthy_type(&arena, &string_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
         ));
 
-        // Nil type should become Never
-        let result = make_truthy_type(&nil_type).unwrap();
+        let result = make_truthy_type(&arena, &nil_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -826,16 +823,15 @@ mod tests {
 
     #[test]
     fn test_make_falsy_type() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
-                Type::new(TypeKind::Literal(Literal::Boolean(false)), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span()),
+            Type::new(TypeKind::Literal(Literal::Boolean(false)), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
-        let falsy = make_falsy_type(&union_type).unwrap();
+        let falsy = make_falsy_type(&arena, &union_type).unwrap();
 
         if let TypeKind::Union(types) = &falsy.kind {
             assert_eq!(types.len(), 2); // nil and false
@@ -846,18 +842,17 @@ mod tests {
 
     #[test]
     fn test_make_falsy_type_non_union() {
+        let arena = bumpalo::Bump::new();
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), make_span());
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
-        // Nil type should remain unchanged
-        let result = make_falsy_type(&nil_type).unwrap();
+        let result = make_falsy_type(&arena, &nil_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Nil)
         ));
 
-        // String type should become Never
-        let result = make_falsy_type(&string_type).unwrap();
+        let result = make_falsy_type(&arena, &string_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)
@@ -866,17 +861,16 @@ mod tests {
 
     #[test]
     fn test_exclude_type_from_union() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
         let to_exclude = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
-        let result = exclude_type(&union_type, &to_exclude).unwrap();
+        let result = exclude_type(&arena, &union_type, &to_exclude).unwrap();
 
         if let TypeKind::Union(types) = &result.kind {
             assert_eq!(types.len(), 2);
@@ -887,18 +881,16 @@ mod tests {
 
     #[test]
     fn test_exclude_type_results_in_single() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![
-                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
-                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
-            ]),
-            make_span(),
-        );
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[
+            Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+            Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+        ]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
         let to_exclude = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
-        let result = exclude_type(&union_type, &to_exclude).unwrap();
+        let result = exclude_type(&arena, &union_type, &to_exclude).unwrap();
 
-        // Should result in a single type
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
@@ -907,16 +899,15 @@ mod tests {
 
     #[test]
     fn test_exclude_all_types_becomes_never() {
-        let union_type = Type::new(
-            TypeKind::Union(vec![Type::new(
-                TypeKind::Primitive(PrimitiveType::String),
-                make_span(),
-            )]),
+        let arena = bumpalo::Bump::new();
+        let types = arena.alloc_slice_clone(&[Type::new(
+            TypeKind::Primitive(PrimitiveType::String),
             make_span(),
-        );
+        )]);
+        let union_type = Type::new(TypeKind::Union(types), make_span());
 
         let to_exclude = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
-        let result = exclude_type(&union_type, &to_exclude).unwrap();
+        let result = exclude_type(&arena, &union_type, &to_exclude).unwrap();
 
         assert!(matches!(
             result.kind,
@@ -926,18 +917,17 @@ mod tests {
 
     #[test]
     fn test_exclude_type_non_union() {
+        let arena = bumpalo::Bump::new();
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
-        // Exclude different type - should remain unchanged
-        let result = exclude_type(&string_type, &number_type).unwrap();
+        let result = exclude_type(&arena, &string_type, &number_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::String)
         ));
 
-        // Exclude same type - should become Never
-        let result = exclude_type(&string_type, &string_type).unwrap();
+        let result = exclude_type(&arena, &string_type, &string_type).unwrap();
         assert!(matches!(
             result.kind,
             TypeKind::Primitive(PrimitiveType::Never)

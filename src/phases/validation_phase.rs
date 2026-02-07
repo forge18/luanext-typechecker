@@ -192,7 +192,7 @@ pub fn check_decorators<F>(
     mut infer_expression_type: F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression<'arena>) -> Result<Type, TypeCheckError>,
+    F: FnMut(&mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
 {
     // Check if decorators are enabled
     if !decorators.is_empty() && !enable_decorators {
@@ -260,7 +260,7 @@ fn check_decorator_expression<F>(
     infer_expression_type: &mut F,
 ) -> Result<(), TypeCheckError>
 where
-    F: FnMut(&mut Expression<'arena>) -> Result<Type, TypeCheckError>,
+    F: FnMut(&mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>,
 {
     match expr {
         DecoratorExpression::Identifier(name) => {
@@ -660,7 +660,7 @@ pub fn check_class_implements_interface<'arena>(
 
                             // Check return type (covariant: class return must be assignable to interface return)
                             // MethodSignature has return_type: Type (not Option)
-                            // MethodDeclaration has return_type: Option<Type>
+                            // MethodDeclaration has return_type: Option<Type<'arena>>
                             if let Some(class_return) = &class_method.return_type {
                                 if !TypeCompatibility::is_assignable(
                                     class_return,

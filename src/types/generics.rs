@@ -11,7 +11,7 @@ pub fn instantiate_type<'arena>(
     typ: &Type<'arena>,
     type_params: &[TypeParameter],
     type_args: &[Type],
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     if type_params.len() != type_args.len() {
         return Err(format!(
             "Expected {} type arguments, but got {}",
@@ -30,7 +30,7 @@ pub fn instantiate_type<'arena>(
 }
 
 /// Recursively substitute type parameters in a type
-fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type, String> {
+fn substitute_type<'arena>(typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type<'arena>, String> {
     match &typ.kind {
         // If this is a type reference that matches a type parameter, substitute it
         TypeKind::Reference(type_ref) => {

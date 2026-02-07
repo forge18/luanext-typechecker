@@ -29,7 +29,7 @@ pub struct TypeChecker<'a, 'arena> {
     type_env: TypeEnvironment<'arena>,
     current_function_return_type: Option<Type<'arena>>,
     // Visitor pattern integration - Phase 6
-    narrowing: TypeNarrower,
+    narrowing: TypeNarrower<'arena>,
     access_control: AccessControl,
     // Note: TypeInferrer is created on-demand in infer_expression_type due to borrowing requirements
     options: CompilerOptions,

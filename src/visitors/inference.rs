@@ -35,7 +35,7 @@ struct PatternBindings {
 /// Trait for type inference operations
 pub trait TypeInferenceVisitor: TypeCheckVisitor {
     /// Infer the type of an expression
-    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type, TypeCheckError>;
+    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of binary operation
     fn infer_binary_op<'arena>(
@@ -44,7 +44,7 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         left: &Type<'arena>,
         right: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of unary operation
     fn infer_unary_op<'arena>(
@@ -52,7 +52,7 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         op: UnaryOp,
         operand: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of function call
     fn infer_call<'arena>(
@@ -60,7 +60,7 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         callee_type: &Type<'arena>,
         args: &mut [Argument],
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of a method call on an object
     fn infer_method<'arena>(
@@ -69,7 +69,7 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         method_name: &str,
         _args: &[Argument],
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of member access
     fn infer_member<'arena>(
@@ -77,16 +77,16 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         obj_type: &Type<'arena>,
         member: &str,
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of index access
-    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type, TypeCheckError>;
+    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Make a type optional by adding nil to the union
-    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type, TypeCheckError>;
+    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Remove nil from a type
-    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type, TypeCheckError>;
+    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check if a type is nil
     fn is_nil<'arena>(&self, typ: &Type<'arena>) -> bool;
@@ -97,10 +97,10 @@ pub trait TypeInferenceVisitor: TypeCheckVisitor {
         left: &Type<'arena>,
         right: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError>;
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check match expression and return result type
-    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type, TypeCheckError>;
+    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check a pattern and bind variables
     fn check_pattern<'arena>(
@@ -148,7 +148,7 @@ impl TypeCheckVisitor for TypeInferrer<'_> {
 
 impl TypeInferenceVisitor for TypeInferrer<'_> {
     #[instrument(skip(self, expr), fields(expr_kind))]
-    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type, TypeCheckError> {
+    fn infer_expression<'arena>(&mut self, expr: &mut Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         let span = expr.span;
         let expr_kind = format!("{:?}", expr.kind);
 
@@ -750,7 +750,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         left: &Type<'arena>,
         right: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         match op {
             BinaryOp::Add
             | BinaryOp::Subtract
@@ -828,7 +828,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         op: UnaryOp,
         _operand: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         match op {
             UnaryOp::Negate => Ok(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
             UnaryOp::Not => Ok(Type::new(TypeKind::Primitive(PrimitiveType::Boolean), span)),
@@ -843,7 +843,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         callee_type: &Type<'arena>,
         args: &mut [Argument],
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         debug!(callee_type = ?callee_type.kind, "Inferring function call type");
 
         match &callee_type.kind {
@@ -951,7 +951,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         method_name: &str,
         _args: &[Argument],
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         // Look up the method in the object type
         match &obj_type.kind {
             TypeKind::Object(obj) => {
@@ -990,7 +990,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         obj_type: &Type<'arena>,
         member: &str,
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         match &obj_type.kind {
             TypeKind::Reference(type_ref) => {
                 let type_name = self.interner.resolve(type_ref.name.node);
@@ -1134,7 +1134,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type, TypeCheckError> {
+    fn infer_index<'arena>(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         match &obj_type.kind {
             TypeKind::Array(elem_type) => Ok((**elem_type).clone()),
             TypeKind::Tuple(types) => {
@@ -1151,12 +1151,12 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         }
     }
 
-    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type, TypeCheckError> {
+    fn make_optional<'arena>(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         let nil_type = Type::new(TypeKind::Primitive(PrimitiveType::Nil), span);
         Ok(Type::new(TypeKind::Union(vec![typ, nil_type]), span))
     }
 
-    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type, TypeCheckError> {
+    fn remove_nil<'arena>(&self, typ: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
         match &typ.kind {
             TypeKind::Union(types) => {
                 let non_nil_types: Vec<Type<'arena>> =
@@ -1193,7 +1193,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
         left: &Type<'arena>,
         right: &Type<'arena>,
         span: Span,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         // If left is T | nil, the result is T (left without nil)
         // If left is just nil, the result is the type of right
         // Otherwise, the result is the type of left
@@ -1214,7 +1214,7 @@ impl TypeInferenceVisitor for TypeInferrer<'_> {
     }
 
     #[instrument(skip(self, match_expr), fields(arms = match_expr.arms.len()))]
-    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type, TypeCheckError> {
+    fn check_match<'arena>(&mut self, match_expr: &mut MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
         debug!(span = ?match_expr.span, "Checking match expression");
 
         // Type check the value being matched
@@ -1528,7 +1528,7 @@ impl TypeInferrer<'_> {
 
     /// Check if a type has an operator overload for the given binary operation.
     /// Returns the operator's return type if found.
-    fn check_operator_overload<'arena>(&self, operand_type: &Type<'arena>, op: BinaryOp) -> Option<Type> {
+    fn check_operator_overload<'arena>(&self, operand_type: &Type<'arena>, op: BinaryOp) -> Option<Type<'arena>> {
         let op_kind = match op {
             BinaryOp::Add => OperatorKind::Add,
             BinaryOp::Subtract => OperatorKind::Subtract,
@@ -2150,7 +2150,7 @@ impl TypeInferrer<'_> {
         &self,
         pattern: &Pattern,
         typ: &Type<'arena>,
-    ) -> Result<Type, TypeCheckError> {
+    ) -> Result<Type<'arena>, TypeCheckError> {
         match pattern {
             Pattern::Wildcard(_) | Pattern::Identifier(_) => {
                 // No narrowing for wildcard or identifier
@@ -2238,7 +2238,7 @@ impl TypeInferrer<'_> {
     fn infer_block_return_type<'arena>(
         &mut self,
         block: &mut Block<'arena>,
-    ) -> Result<Option<Type>, TypeCheckError> {
+    ) -> Result<Option<Type<'arena>>, TypeCheckError> {
         self.infer_block_return_type_recursive(block)
     }
 
@@ -2246,7 +2246,7 @@ impl TypeInferrer<'_> {
     fn infer_block_return_type_recursive<'arena>(
         &mut self,
         block: &mut Block<'arena>,
-    ) -> Result<Option<Type>, TypeCheckError> {
+    ) -> Result<Option<Type<'arena>>, TypeCheckError> {
         let mut return_types: Vec<Type<'arena>> = Vec::new();
 
         for stmt in &mut block.statements {

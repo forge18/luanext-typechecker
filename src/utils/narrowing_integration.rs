@@ -28,15 +28,16 @@ impl IfStatementNarrowingExample {
     /// end
     /// ```
     #[allow(dead_code)]
-    pub fn check_if_statement_with_narrowing(
-        condition: &Expression,
-        base_context: &NarrowingContext,
-        variable_types: &FxHashMap<StringId, Type>,
+    pub fn check_if_statement_with_narrowing<'arena>(
+        arena: &'arena bumpalo::Bump,
+        condition: &Expression<'arena>,
+        base_context: &NarrowingContext<'arena>,
+        variable_types: &FxHashMap<StringId, Type<'arena>>,
         interner: &StringInterner,
-    ) -> (NarrowingContext, NarrowingContext) {
+    ) -> (NarrowingContext<'arena>, NarrowingContext<'arena>) {
         // Step 1: Analyze the condition to produce narrowed contexts
         let (then_context, else_context) =
-            narrow_type_from_condition(condition, base_context, variable_types, interner);
+            narrow_type_from_condition(arena, condition, base_context, variable_types, interner);
 
         (then_context, else_context)
     }

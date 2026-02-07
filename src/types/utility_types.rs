@@ -11,32 +11,33 @@ use typedlua_parser::string_interner::StringInterner;
 use crate::core::type_environment::TypeEnvironment;
 
 /// Apply a utility type transformation
-pub fn apply_utility_type(
+pub fn apply_utility_type<'arena>(
+    arena: &'arena bumpalo::Bump,
     name: &str,
-    type_args: &[Type],
+    type_args: &[Type<'arena>],
     span: Span,
     interner: &StringInterner,
     common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     match name {
-        "Partial" => partial(type_args, span),
-        "Required" => required(type_args, span),
-        "Readonly" => readonly(type_args, span),
-        "Record" => record(type_args, span, interner, common_ids),
-        "Pick" => pick(type_args, span, interner),
-        "Omit" => omit(type_args, span, interner),
-        "Exclude" => exclude(type_args, span),
-        "Extract" => extract(type_args, span),
-        "NonNilable" => non_nilable(type_args, span),
-        "Nilable" => nilable(type_args, span),
+        "Partial" => partial(arena, type_args, span),
+        "Required" => required(arena, type_args, span),
+        "Readonly" => readonly(arena, type_args, span),
+        "Record" => record(arena, type_args, span, interner, common_ids),
+        "Pick" => pick(arena, type_args, span, interner),
+        "Omit" => omit(arena, type_args, span, interner),
+        "Exclude" => exclude(arena, type_args, span),
+        "Extract" => extract(arena, type_args, span),
+        "NonNilable" => non_nilable(arena, type_args, span),
+        "Nilable" => nilable(arena, type_args, span),
         "ReturnType" => return_type(type_args, span),
-        "Parameters" => parameters(type_args, span),
+        "Parameters" => parameters(arena, type_args, span),
         _ => Err(format!("Unknown utility type: {}", name)),
     }
 }
 
 /// Partial<T> - Makes all properties in T optional
-fn partial(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn partial<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Partial<T> expects 1 type argument, got {}",
@@ -80,7 +81,7 @@ fn partial(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// Required<T> - Makes all properties in T required (non-optional)
-fn required(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn required(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Required<T> expects 1 type argument, got {}",
@@ -123,7 +124,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// Readonly<T> - Makes all properties in T readonly
-fn readonly(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn readonly(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Readonly<T> expects 1 type argument, got {}",
@@ -176,7 +177,7 @@ fn record(
     span: Span,
     _interner: &StringInterner,
     common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Record<K, V> expects 2 type arguments, got {}",
@@ -239,7 +240,7 @@ fn record(
 }
 
 /// Pick<T, K> - Picks a subset of properties from T
-fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type, String> {
+fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Pick<T, K> expects 2 type arguments, got {}",
@@ -288,7 +289,7 @@ fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 }
 
 /// Omit<T, K> - Omits properties from T
-fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type, String> {
+fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Omit<T, K> expects 2 type arguments, got {}",
@@ -337,7 +338,7 @@ fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 }
 
 /// Exclude<T, U> - Excludes types from a union T that are assignable to U
-fn exclude(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn exclude(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Exclude<T, U> expects 2 type arguments, got {}",
@@ -376,7 +377,7 @@ fn exclude(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// Extract<T, U> - Extracts types from a union T that are assignable to U
-fn extract(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn extract(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Extract<T, U> expects 2 type arguments, got {}",
@@ -415,7 +416,7 @@ fn extract(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// NonNilable<T> - Removes nil and void from a type
-fn non_nilable(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn non_nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "NonNilable<T> expects 1 type argument, got {}",
@@ -453,7 +454,7 @@ fn non_nilable(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// Nilable<T> - Adds nil to a type (equivalent to T | nil)
-fn nilable(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Nilable<T> expects 1 type argument, got {}",
@@ -494,7 +495,7 @@ fn nilable(type_args: &[Type], span: Span) -> Result<Type, String> {
 }
 
 /// ReturnType<F> - Extracts the return type from a function type
-fn return_type(type_args: &[Type], _span: Span) -> Result<Type, String> {
+fn return_type(type_args: &[Type], _span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "ReturnType<F> expects 1 type argument, got {}",
@@ -511,7 +512,7 @@ fn return_type(type_args: &[Type], _span: Span) -> Result<Type, String> {
 }
 
 /// Parameters<F> - Extracts parameter types from a function as a tuple
-fn parameters(type_args: &[Type], span: Span) -> Result<Type, String> {
+fn parameters(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Parameters<F> expects 1 type argument, got {}",
@@ -541,7 +542,7 @@ pub fn evaluate_mapped_type<'arena>(
     mapped: &MappedType,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     // Resolve the 'in' type if it's a KeyOf expression
     let in_type_resolved = match &mapped.in_type.kind {
         TypeKind::KeyOf(operand) => {
@@ -597,7 +598,7 @@ pub fn evaluate_keyof<'arena>(
     typ: &Type<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     // Resolve type reference first
     let resolved_type = match &typ.kind {
         TypeKind::Reference(type_ref) => {
@@ -652,7 +653,7 @@ pub fn evaluate_keyof<'arena>(
 pub fn evaluate_conditional_type<'arena>(
     conditional: &typedlua_parser::ast::types::ConditionalType,
     type_env: &TypeEnvironment<'arena>,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     use crate::core::type_compat::TypeCompatibility;
     use rustc_hash::FxHashMap;
 
@@ -884,7 +885,7 @@ fn try_match_and_infer<'arena>(
 fn substitute_inferred_types<'arena>(
     typ: &Type<'arena>,
     inferred: &FxHashMap<String, Type<'arena>>,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     match &typ.kind {
         // If it's a reference to an inferred type variable, substitute it
         TypeKind::Reference(type_ref) if type_ref.type_arguments.is_none() => {
@@ -1036,7 +1037,7 @@ pub fn evaluate_template_literal_type<'arena>(
     template: &typedlua_parser::ast::types::TemplateLiteralType,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
-) -> Result<Type, String> {
+) -> Result<Type<'arena>, String> {
     use typedlua_parser::ast::types::TemplateLiteralTypePart;
 
     // Extract all interpolated types and get their possible values

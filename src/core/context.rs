@@ -9,8 +9,8 @@ use typedlua_parser::string_interner::StringInterner;
 pub trait TypeCheckContext<'arena> {
     fn symbol_table(&mut self) -> &mut SymbolTable<'arena>;
     fn type_env(&mut self) -> &mut TypeEnvironment<'arena>;
-    fn narrowing(&mut self) -> &mut TypeNarrower;
-    fn access_control(&mut self) -> &mut AccessControl;
+    fn narrowing(&mut self) -> &mut TypeNarrower<'arena>;
+    fn access_control(&mut self) -> &mut AccessControl<'arena>;
     fn interner(&self) -> &StringInterner;
     fn common(&self) -> &CommonIdentifiers;
     fn diagnostic_handler(&self) -> &Arc<dyn DiagnosticHandler>;
@@ -19,8 +19,8 @@ pub trait TypeCheckContext<'arena> {
 pub struct TypeCheckContextImpl<'arena> {
     pub symbol_table: SymbolTable<'arena>,
     pub type_env: TypeEnvironment<'arena>,
-    pub narrowing: TypeNarrower,
-    pub access_control: AccessControl,
+    pub narrowing: TypeNarrower<'arena>,
+    pub access_control: AccessControl<'arena>,
     pub interner: Arc<StringInterner>,
     pub common: Arc<CommonIdentifiers>,
     pub diagnostic_handler: Arc<dyn DiagnosticHandler>,
@@ -53,11 +53,11 @@ impl<'arena> TypeCheckContext<'arena> for TypeCheckContextImpl<'arena> {
         &mut self.type_env
     }
 
-    fn narrowing(&mut self) -> &mut TypeNarrower {
+    fn narrowing(&mut self) -> &mut TypeNarrower<'arena> {
         &mut self.narrowing
     }
 
-    fn access_control(&mut self) -> &mut AccessControl {
+    fn access_control(&mut self) -> &mut AccessControl<'arena> {
         &mut self.access_control
     }
 

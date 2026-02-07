@@ -401,7 +401,7 @@ fn resolve_import_type(
     module_resolver: Option<&Arc<ModuleResolver>>,
     current_module_id: Option<&ModuleId>,
     diagnostic_handler: &Arc<dyn DiagnosticHandler>,
-) -> Result<Type, TypeCheckError> {
+) -> Result<Type<'arena>, TypeCheckError> {
     if let (Some(registry), Some(resolver), Some(current_id)) =
         (module_registry, module_resolver, current_module_id)
     {
