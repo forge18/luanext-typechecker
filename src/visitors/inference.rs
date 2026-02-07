@@ -1964,40 +1964,22 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
     ) -> Result<(), TypeCheckError> {
         // If there's a wildcard or identifier pattern without a guard, it's exhaustive
         let has_wildcard = arms.iter().any(|arm| {
-            let is_wildcard = matches!(arm.pattern, Pattern::Wildcard(_) | Pattern::Identifier(_))
-                && arm.guard.is_none();
-            eprintln!(
-                "DEBUG check_exhaustiveness: arm pattern = {:?}, is_wildcard = {}",
-                arm.pattern, is_wildcard
-            );
-            is_wildcard
+            matches!(arm.pattern, Pattern::Wildcard(_) | Pattern::Identifier(_))
+                && arm.guard.is_none()
         });
-        eprintln!(
-            "DEBUG check_exhaustiveness: has_wildcard = {}",
-            has_wildcard
-        );
 
         if has_wildcard {
             return Ok(());
         }
 
         // Check exhaustiveness based on type
-        eprintln!(
-            "DEBUG check_exhaustiveness: value_type.kind = {:?}",
-            value_type.kind
-        );
         match &value_type.kind {
             TypeKind::Primitive(PrimitiveType::Boolean) => {
                 // Boolean must match both true and false
                 let mut has_true = false;
                 let mut has_false = false;
 
-                eprintln!(
-                    "DEBUG exhaustiveness: checking {} arms for boolean",
-                    arms.len()
-                );
                 for arm in arms {
-                    // Collect all literals from the pattern, including those in or-patterns
                     let mut literals = Vec::new();
                     self.collect_pattern_literals(&arm.pattern, &mut literals);
 
@@ -2011,10 +1993,6 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
                         }
                     }
                 }
-                eprintln!(
-                    "DEBUG exhaustiveness: has_true={}, has_false={}",
-                    has_true, has_false
-                );
 
                 if !has_true || !has_false {
                     return Err(TypeCheckError::new(
