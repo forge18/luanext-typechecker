@@ -48,7 +48,7 @@ fn partial<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], spa
     let typ = &type_args[0];
     match &typ.kind {
         TypeKind::Object(obj) => {
-            let new_members = obj
+            let new_members: Vec<_> = obj
                 .members
                 .iter()
                 .map(|member| {
@@ -70,7 +70,7 @@ fn partial<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], spa
 
             Ok(Type::new(
                 TypeKind::Object(ObjectType {
-                    members: new_members,
+                    members: arena.alloc_slice_fill_iter(new_members),
                     span,
                 }),
                 span,
@@ -81,7 +81,7 @@ fn partial<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], spa
 }
 
 /// Required<T> - Makes all properties in T required (non-optional)
-fn required(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn required<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Required<T> expects 1 type argument, got {}",
@@ -92,7 +92,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     let typ = &type_args[0];
     match &typ.kind {
         TypeKind::Object(obj) => {
-            let new_members = obj
+            let new_members: Vec<_> = obj
                 .members
                 .iter()
                 .map(|member| {
@@ -113,7 +113,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 
             Ok(Type::new(
                 TypeKind::Object(ObjectType {
-                    members: new_members,
+                    members: arena.alloc_slice_fill_iter(new_members),
                     span,
                 }),
                 span,
@@ -124,7 +124,7 @@ fn required(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 }
 
 /// Readonly<T> - Makes all properties in T readonly
-fn readonly(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn readonly<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Readonly<T> expects 1 type argument, got {}",
@@ -135,7 +135,7 @@ fn readonly(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
     let typ = &type_args[0];
     match &typ.kind {
         TypeKind::Object(obj) => {
-            let new_members = obj
+            let new_members: Vec<_> = obj
                 .members
                 .iter()
                 .map(|member| {
@@ -156,7 +156,7 @@ fn readonly(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 
             Ok(Type::new(
                 TypeKind::Object(ObjectType {
-                    members: new_members,
+                    members: arena.alloc_slice_fill_iter(new_members),
                     span,
                 }),
                 span,
@@ -172,8 +172,9 @@ fn readonly(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 }
 
 /// Record<K, V> - Constructs an object type with keys of type K and values of type V
-fn record(
-    type_args: &[Type],
+fn record<'arena>(
+    arena: &'arena bumpalo::Bump,
+    type_args: &[Type<'arena>],
     span: Span,
     _interner: &StringInterner,
     common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
@@ -232,7 +233,7 @@ fn record(
 
     Ok(Type::new(
         TypeKind::Object(ObjectType {
-            members: vec![ObjectTypeMember::Index(index_sig)],
+            members: arena.alloc_slice_fill_iter([ObjectTypeMember::Index(index_sig)]),
             span,
         }),
         span,
@@ -240,7 +241,7 @@ fn record(
 }
 
 /// Pick<T, K> - Picks a subset of properties from T
-fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
+fn pick<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Pick<T, K> expects 2 type arguments, got {}",
@@ -278,7 +279,7 @@ fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 
             Ok(Type::new(
                 TypeKind::Object(ObjectType {
-                    members: new_members,
+                    members: arena.alloc_slice_fill_iter(new_members),
                     span,
                 }),
                 span,
@@ -289,7 +290,7 @@ fn pick(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 }
 
 /// Omit<T, K> - Omits properties from T
-fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
+fn omit<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span, interner: &StringInterner) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Omit<T, K> expects 2 type arguments, got {}",
@@ -327,7 +328,7 @@ fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 
             Ok(Type::new(
                 TypeKind::Object(ObjectType {
-                    members: new_members,
+                    members: arena.alloc_slice_fill_iter(new_members),
                     span,
                 }),
                 span,
@@ -338,7 +339,7 @@ fn omit(type_args: &[Type], span: Span, interner: &StringInterner) -> Result<Typ
 }
 
 /// Exclude<T, U> - Excludes types from a union T that are assignable to U
-fn exclude(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn exclude<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Exclude<T, U> expects 2 type arguments, got {}",
@@ -362,7 +363,7 @@ fn exclude(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
             } else if remaining.len() == 1 {
                 Ok(remaining[0].clone())
             } else {
-                Ok(Type::new(TypeKind::Union(remaining), span))
+                Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(remaining)), span))
             }
         }
         _ => {
@@ -377,7 +378,7 @@ fn exclude(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 }
 
 /// Extract<T, U> - Extracts types from a union T that are assignable to U
-fn extract(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn extract<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
             "Extract<T, U> expects 2 type arguments, got {}",
@@ -401,7 +402,7 @@ fn extract(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
             } else if extracted.len() == 1 {
                 Ok(extracted[0].clone())
             } else {
-                Ok(Type::new(TypeKind::Union(extracted), span))
+                Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(extracted)), span))
             }
         }
         _ => {
@@ -416,7 +417,7 @@ fn extract(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 }
 
 /// NonNilable<T> - Removes nil and void from a type
-fn non_nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn non_nilable<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "NonNilable<T> expects 1 type argument, got {}",
@@ -439,7 +440,7 @@ fn non_nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
             } else if non_nil.len() == 1 {
                 Ok(non_nil[0].clone())
             } else {
-                Ok(Type::new(TypeKind::Union(non_nil), span))
+                Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(non_nil)), span))
             }
         }
         TypeKind::Nullable(inner) => Ok((**inner).clone()),
@@ -454,7 +455,7 @@ fn non_nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 }
 
 /// Nilable<T> - Adds nil to a type (equivalent to T | nil)
-fn nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn nilable<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Nilable<T> expects 1 type argument, got {}",
@@ -475,9 +476,9 @@ fn nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
             if types.iter().any(is_nil_or_void) {
                 Ok(typ.clone())
             } else {
-                let mut new_types = types.clone();
+                let mut new_types: Vec<_> = types.iter().cloned().collect();
                 new_types.push(Type::new(TypeKind::Primitive(PrimitiveType::Nil), span));
-                Ok(Type::new(TypeKind::Union(new_types), span))
+                Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(new_types)), span))
             }
         }
         TypeKind::Nullable(_) => {
@@ -485,17 +486,17 @@ fn nilable(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
             Ok(typ.clone())
         }
         _ => Ok(Type::new(
-            TypeKind::Union(vec![
+            TypeKind::Union(arena.alloc_slice_fill_iter([
                 typ.clone(),
                 Type::new(TypeKind::Primitive(PrimitiveType::Nil), span),
-            ]),
+            ])),
             span,
         )),
     }
 }
 
 /// ReturnType<F> - Extracts the return type from a function type
-fn return_type(type_args: &[Type], _span: Span) -> Result<Type<'arena>, String> {
+fn return_type<'arena>(type_args: &[Type<'arena>], _span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "ReturnType<F> expects 1 type argument, got {}",
@@ -512,7 +513,7 @@ fn return_type(type_args: &[Type], _span: Span) -> Result<Type<'arena>, String> 
 }
 
 /// Parameters<F> - Extracts parameter types from a function as a tuple
-fn parameters(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
+fn parameters<'arena>(arena: &'arena bumpalo::Bump, type_args: &[Type<'arena>], span: Span) -> Result<Type<'arena>, String> {
     if type_args.len() != 1 {
         return Err(format!(
             "Parameters<F> expects 1 type argument, got {}",
@@ -530,7 +531,7 @@ fn parameters(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
                 .filter_map(|p| p.type_annotation.clone())
                 .collect();
 
-            Ok(Type::new(TypeKind::Tuple(param_types), span))
+            Ok(Type::new(TypeKind::Tuple(arena.alloc_slice_fill_iter(param_types)), span))
         }
         _ => Err("Parameters<F> requires F to be a function type".to_string()),
     }
@@ -539,7 +540,8 @@ fn parameters(type_args: &[Type], span: Span) -> Result<Type<'arena>, String> {
 /// Evaluate a mapped type: { [K in T]: V }
 /// Transforms the mapped type into a concrete object type
 pub fn evaluate_mapped_type<'arena>(
-    mapped: &MappedType,
+    arena: &'arena bumpalo::Bump,
+    mapped: &MappedType<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, String> {
@@ -547,7 +549,7 @@ pub fn evaluate_mapped_type<'arena>(
     let in_type_resolved = match &mapped.in_type.kind {
         TypeKind::KeyOf(operand) => {
             // Evaluate keyof to get the union of string literals
-            evaluate_keyof(operand, type_env, interner)?
+            evaluate_keyof(arena, operand, type_env, interner)?
         }
         _ => (*mapped.in_type).clone(),
     };
@@ -586,7 +588,7 @@ pub fn evaluate_mapped_type<'arena>(
 
     Ok(Type::new(
         TypeKind::Object(ObjectType {
-            members,
+            members: arena.alloc_slice_fill_iter(members),
             span: mapped.span,
         }),
         mapped.span,
@@ -595,6 +597,7 @@ pub fn evaluate_mapped_type<'arena>(
 
 /// Evaluate keyof operator - extracts property names from an object type
 pub fn evaluate_keyof<'arena>(
+    arena: &'arena bumpalo::Bump,
     typ: &Type<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
@@ -638,7 +641,7 @@ pub fn evaluate_keyof<'arena>(
             } else if keys.len() == 1 {
                 Ok(keys.into_iter().next().unwrap())
             } else {
-                Ok(Type::new(TypeKind::Union(keys), resolved_type.span))
+                Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(keys)), resolved_type.span))
             }
         }
         _ => Err(format!(
@@ -651,7 +654,8 @@ pub fn evaluate_keyof<'arena>(
 /// Evaluate a conditional type: T extends U ? X : Y
 /// Also handles infer keyword: T extends Array<infer U> ? U : never
 pub fn evaluate_conditional_type<'arena>(
-    conditional: &typedlua_parser::ast::types::ConditionalType,
+    arena: &'arena bumpalo::Bump,
+    conditional: &typedlua_parser::ast::types::ConditionalType<'arena>,
     type_env: &TypeEnvironment<'arena>,
 ) -> Result<Type<'arena>, String> {
     use crate::core::type_compat::TypeCompatibility;
@@ -669,7 +673,7 @@ pub fn evaluate_conditional_type<'arena>(
         // Try to match check_type against extends_type pattern and extract inferred types
         if try_match_and_infer(check_type, extends_type, &mut inferred_types, type_env) {
             // Match succeeded - evaluate true branch with inferred types
-            return substitute_inferred_types(&conditional.true_type, &inferred_types);
+            return substitute_inferred_types(arena, &conditional.true_type, &inferred_types);
         } else {
             // Match failed - return false branch
             return Ok((*conditional.false_type).clone());
@@ -684,14 +688,14 @@ pub fn evaluate_conditional_type<'arena>(
             .map(|member_type| {
                 // Create a new conditional for each union member
                 let member_conditional = typedlua_parser::ast::types::ConditionalType {
-                    check_type: Box::new(member_type.clone()),
-                    extends_type: conditional.extends_type.clone(),
-                    true_type: conditional.true_type.clone(),
-                    false_type: conditional.false_type.clone(),
+                    check_type: arena.alloc(member_type.clone()),
+                    extends_type: conditional.extends_type,
+                    true_type: conditional.true_type,
+                    false_type: conditional.false_type,
                     span: conditional.span,
                 };
 
-                evaluate_conditional_type(&member_conditional, type_env)
+                evaluate_conditional_type(arena, &member_conditional, type_env)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -710,7 +714,7 @@ pub fn evaluate_conditional_type<'arena>(
             return Ok(result_types.into_iter().next().unwrap());
         }
 
-        return Ok(Type::new(TypeKind::Union(result_types), conditional.span));
+        return Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(result_types)), conditional.span));
     }
 
     // Resolve type references for comparison
@@ -883,6 +887,7 @@ fn try_match_and_infer<'arena>(
 
 /// Substitute inferred type variables in a type
 fn substitute_inferred_types<'arena>(
+    arena: &'arena bumpalo::Bump,
     typ: &Type<'arena>,
     inferred: &FxHashMap<String, Type<'arena>>,
 ) -> Result<Type<'arena>, String> {
@@ -899,9 +904,9 @@ fn substitute_inferred_types<'arena>(
 
         // Recursively substitute in compound types
         TypeKind::Array(elem) => {
-            let substituted_elem = substitute_inferred_types(elem, inferred)?;
+            let substituted_elem = substitute_inferred_types(arena, elem, inferred)?;
             Ok(Type::new(
-                TypeKind::Array(Box::new(substituted_elem)),
+                TypeKind::Array(arena.alloc(substituted_elem)),
                 typ.span,
             ))
         }
@@ -909,25 +914,25 @@ fn substitute_inferred_types<'arena>(
         TypeKind::Union(types) => {
             let substituted: Result<Vec<_>, _> = types
                 .iter()
-                .map(|t| substitute_inferred_types(t, inferred))
+                .map(|t| substitute_inferred_types(arena, t, inferred))
                 .collect();
-            Ok(Type::new(TypeKind::Union(substituted?), typ.span))
+            Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(substituted?)), typ.span))
         }
 
         TypeKind::Intersection(types) => {
             let substituted: Result<Vec<_>, _> = types
                 .iter()
-                .map(|t| substitute_inferred_types(t, inferred))
+                .map(|t| substitute_inferred_types(arena, t, inferred))
                 .collect();
-            Ok(Type::new(TypeKind::Intersection(substituted?), typ.span))
+            Ok(Type::new(TypeKind::Intersection(arena.alloc_slice_fill_iter(substituted?)), typ.span))
         }
 
         TypeKind::Tuple(types) => {
             let substituted: Result<Vec<_>, _> = types
                 .iter()
-                .map(|t| substitute_inferred_types(t, inferred))
+                .map(|t| substitute_inferred_types(arena, t, inferred))
                 .collect();
-            Ok(Type::new(TypeKind::Tuple(substituted?), typ.span))
+            Ok(Type::new(TypeKind::Tuple(arena.alloc_slice_fill_iter(substituted?)), typ.span))
         }
 
         // For other types, return as-is
@@ -946,7 +951,7 @@ fn extract_keys_from_type<'arena>(
         TypeKind::Literal(Literal::String(s)) => Ok(vec![s.clone()]),
         TypeKind::Union(types) => {
             let mut keys = Vec::new();
-            for t in types {
+            for t in types.iter() {
                 match &t.kind {
                     TypeKind::Literal(Literal::String(s)) => {
                         keys.push(s.clone());
@@ -1034,7 +1039,8 @@ fn is_assignable_to<'arena>(source: &Type<'arena>, target: &Type<'arena>) -> boo
 /// Evaluate a template literal type to a union of string literals
 /// For example: `Hello ${T}` where T = "World" | "Rust" becomes "Hello World" | "Hello Rust"
 pub fn evaluate_template_literal_type<'arena>(
-    template: &typedlua_parser::ast::types::TemplateLiteralType,
+    arena: &'arena bumpalo::Bump,
+    template: &typedlua_parser::ast::types::TemplateLiteralType<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, String> {
@@ -1043,7 +1049,7 @@ pub fn evaluate_template_literal_type<'arena>(
     // Extract all interpolated types and get their possible values
     let mut part_expansions: Vec<Vec<String>> = Vec::new();
 
-    for part in &template.parts {
+    for part in template.parts.iter() {
         match part {
             TemplateLiteralTypePart::String(s) => {
                 // Static string - single value
@@ -1091,7 +1097,7 @@ pub fn evaluate_template_literal_type<'arena>(
             .map(|s| Type::new(TypeKind::Literal(Literal::String(s)), template.span))
             .collect();
 
-        Ok(Type::new(TypeKind::Union(literal_types), template.span))
+        Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(literal_types)), template.span))
     }
 }
 
