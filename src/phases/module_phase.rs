@@ -196,6 +196,15 @@ fn extract_declaration_export<'arena>(
                 );
             }
         }
+        Statement::Enum(enum_decl) => {
+            let enum_name = interner.resolve(enum_decl.name.node);
+            if let Some(symbol) = symbol_table.lookup(&enum_name) {
+                exports.add_named(
+                    enum_name,
+                    ExportedSymbol::new(symbol_to_static(symbol.clone()), false),
+                );
+            }
+        }
         _ => {}
     }
 }

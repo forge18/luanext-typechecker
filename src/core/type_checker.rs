@@ -63,6 +63,27 @@ pub struct TypeChecker<'a, 'arena> {
     resolving_types: std::cell::RefCell<std::collections::HashSet<String>>,
 }
 
+/// Extract a function declaration from a statement, handling both
+/// top-level functions and exported function declarations for hoisting.
+fn extract_function_decl<'a, 'arena>(
+    statement: &'a Statement<'arena>,
+) -> Option<&'a FunctionDeclaration<'arena>> {
+    match statement {
+        Statement::Function(func_decl) => Some(func_decl),
+        Statement::Export(ExportDeclaration {
+            kind: ExportKind::Declaration(decl),
+            ..
+        }) => {
+            if let Statement::Function(func_decl) = &**decl {
+                Some(func_decl)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Create a new TypeChecker without loading the standard library.
     ///
@@ -276,8 +297,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
         // PASS 1: Register all function declarations (hoisting)
         // This allows functions to be called before they appear in source order
+        // Also handles exported function declarations
         for statement in program.statements.iter() {
-            if let Statement::Function(func_decl) = statement {
+            let func_decl = extract_function_decl(statement);
+            if let Some(func_decl) = func_decl {
                 self.register_function_signature(func_decl)?;
             }
         }
@@ -1001,69 +1024,46 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         match &export.kind {
             ExportKind::Declaration(decl) => {
                 // Process the declaration to register it in the symbol table
-                // Note: Most check functions require &mut, but we only have & here
-                // For now, only handle TypeAlias which takes &TypeAliasDeclaration
+                // and mark the resulting symbol as exported
                 match &**decl {
-                    Statement::TypeAlias(alias) => self.check_type_alias(alias),
-                    Statement::Interface(iface) => {
-                        // Register interface in both type_env and symbol_table
-                        // This is a subset of what check_interface_declaration does
-                        let iface_name = self.interner.resolve(iface.name.node).to_string();
-
-                        // Store type parameter names for generic interfaces
-                        if let Some(type_params) = &iface.type_parameters {
-                            let param_names: Vec<String> = type_params
-                                .iter()
-                                .map(|tp| self.interner.resolve(tp.name.node).to_string())
-                                .collect();
-                            self.type_env
-                                .register_interface_type_params(iface_name.clone(), param_names);
-                        }
-
-                        // Create object type from interface members
-                        let members_vec: Vec<ObjectTypeMember<'arena>> = iface
-                            .members
-                            .iter()
-                            .map(|member| match member {
-                                InterfaceMember::Property(prop) => {
-                                    ObjectTypeMember::Property(prop.clone())
-                                }
-                                InterfaceMember::Method(method) => {
-                                    ObjectTypeMember::Method(method.clone())
-                                }
-                                InterfaceMember::Index(index) => {
-                                    ObjectTypeMember::Index(index.clone())
-                                }
-                            })
-                            .collect();
-                        let obj_type = Type::new(
-                            TypeKind::Object(ObjectType {
-                                members: self.arena.alloc_slice_fill_iter(members_vec),
-                                span: iface.span,
-                            }),
-                            iface.span,
-                        );
-
-                        // Register in type_env
-                        self.type_env
-                            .register_interface(iface_name.clone(), obj_type.clone())
-                            .map_err(|e| TypeCheckError::new(e, iface.span))?;
-
-                        // Also register in symbol table for export extraction
-                        let symbol = Symbol {
-                            name: iface_name,
-                            typ: obj_type,
-                            kind: SymbolKind::Interface,
-                            span: iface.span,
-                            is_exported: true,
-                            references: Vec::new(),
-                        };
-                        let _ = self.symbol_table.declare(symbol);
-
+                    Statement::TypeAlias(alias) => {
+                        self.check_type_alias(alias)?;
+                        let name = self.interner.resolve(alias.name.node).to_string();
+                        self.symbol_table.mark_exported(&name);
                         Ok(())
                     }
-                    // TODO: Handle other declaration types (Function, Class, Variable, Enum)
-                    // These require mutable references and would need the ExportDeclaration to be mutable
+                    Statement::Interface(iface) => {
+                        self.check_interface_declaration(iface)?;
+                        let name = self.interner.resolve(iface.name.node).to_string();
+                        self.symbol_table.mark_exported(&name);
+                        Ok(())
+                    }
+                    Statement::Function(func_decl) => {
+                        self.check_function_declaration(func_decl)?;
+                        let name = self.interner.resolve(func_decl.name.node).to_string();
+                        self.symbol_table.mark_exported(&name);
+                        Ok(())
+                    }
+                    Statement::Class(class_decl) => {
+                        self.check_class_declaration(class_decl)?;
+                        let name = self.interner.resolve(class_decl.name.node).to_string();
+                        self.symbol_table.mark_exported(&name);
+                        Ok(())
+                    }
+                    Statement::Variable(var_decl) => {
+                        self.check_variable_declaration(var_decl)?;
+                        if let Pattern::Identifier(ident) = &var_decl.pattern {
+                            let name = self.interner.resolve(ident.node).to_string();
+                            self.symbol_table.mark_exported(&name);
+                        }
+                        Ok(())
+                    }
+                    Statement::Enum(enum_decl) => {
+                        self.check_enum_declaration(enum_decl)?;
+                        let name = self.interner.resolve(enum_decl.name.node).to_string();
+                        self.symbol_table.mark_exported(&name);
+                        Ok(())
+                    }
                     _ => Ok(()),
                 }
             }

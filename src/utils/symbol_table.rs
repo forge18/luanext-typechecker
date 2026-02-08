@@ -169,6 +169,26 @@ impl<'arena> SymbolTable<'arena> {
         &self.current_scope
     }
 
+    /// Mark a symbol as exported by name
+    /// Returns true if the symbol was found and marked
+    pub fn mark_exported(&mut self, name: &str) -> bool {
+        // Try current scope first
+        if let Some(symbol) = self.current_scope.symbols.get_mut(name) {
+            symbol.is_exported = true;
+            return true;
+        }
+
+        // Walk the scope stack (most recent first)
+        for scope in self.scope_stack.iter_mut().rev() {
+            if let Some(symbol) = scope.symbols.get_mut(name) {
+                symbol.is_exported = true;
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Get all symbols visible from the current scope (current + all parent scopes on stack)
     pub fn all_visible_symbols(&self) -> FxHashMap<String, &Symbol<'arena>> {
         let mut result = FxHashMap::default();
