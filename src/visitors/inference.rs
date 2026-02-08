@@ -1110,7 +1110,7 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 } else if types.len() == 1 {
                     Ok(types[0].clone())
                 } else {
-                    Ok(Type::new(TypeKind::Union(types.clone()), span))
+                    Ok(Type::new(TypeKind::Union(types), span))
                 }
             }
             _ => Ok(Type::new(TypeKind::Primitive(PrimitiveType::Unknown), span)),
