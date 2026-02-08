@@ -219,8 +219,8 @@ impl Default for ModuleRegistry {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-    use typedlua_parser::span::Span;
+    use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+    use luanext_parser::span::Span;
 
     fn make_test_type() -> Type<'static> {
         Type::new(

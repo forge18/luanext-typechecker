@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use typedlua_parser::span::Span;
+use luanext_parser::span::Span;
 
 // Bridge implementation for parser crate compatibility
 // This allows core's diagnostic handlers to be used with the parser crate's Lexer and Parser
@@ -564,14 +564,14 @@ impl DiagnosticHandler for CollectingDiagnosticHandler {
 }
 
 // Bridge implementations for parser crate compatibility
-// These allow the core's diagnostic handlers to work with typedlua_parser's Lexer and Parser
+// These allow the core's diagnostic handlers to work with luanext_parser's Lexer and Parser
 
 /// Convert a parser diagnostic to a core diagnostic
-fn convert_parser_diagnostic(diag: typedlua_parser::Diagnostic) -> Diagnostic {
+fn convert_parser_diagnostic(diag: luanext_parser::Diagnostic) -> Diagnostic {
     let level = match diag.level {
-        typedlua_parser::diagnostics::DiagnosticLevel::Error => DiagnosticLevel::Error,
-        typedlua_parser::diagnostics::DiagnosticLevel::Warning => DiagnosticLevel::Warning,
-        typedlua_parser::diagnostics::DiagnosticLevel::Info => DiagnosticLevel::Info,
+        luanext_parser::diagnostics::DiagnosticLevel::Error => DiagnosticLevel::Error,
+        luanext_parser::diagnostics::DiagnosticLevel::Warning => DiagnosticLevel::Warning,
+        luanext_parser::diagnostics::DiagnosticLevel::Info => DiagnosticLevel::Info,
     };
 
     let code = diag.code.map(|c| DiagnosticCode::new(c.prefix, c.code));
@@ -605,8 +605,8 @@ fn convert_parser_diagnostic(diag: typedlua_parser::Diagnostic) -> Diagnostic {
     }
 }
 
-impl typedlua_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
-    fn report(&self, diagnostic: typedlua_parser::Diagnostic) {
+impl luanext_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
+    fn report(&self, diagnostic: luanext_parser::Diagnostic) {
         DiagnosticHandler::report(self, convert_parser_diagnostic(diagnostic));
     }
 
@@ -622,22 +622,22 @@ impl typedlua_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
         DiagnosticHandler::warning_count(self)
     }
 
-    fn get_diagnostics(&self) -> Vec<typedlua_parser::Diagnostic> {
+    fn get_diagnostics(&self) -> Vec<luanext_parser::Diagnostic> {
         // Convert core diagnostics back to parser diagnostics
         DiagnosticHandler::get_diagnostics(self)
             .into_iter()
             .map(|d| {
                 let level = match d.level {
-                    DiagnosticLevel::Error => typedlua_parser::diagnostics::DiagnosticLevel::Error,
+                    DiagnosticLevel::Error => luanext_parser::diagnostics::DiagnosticLevel::Error,
                     DiagnosticLevel::Warning => {
-                        typedlua_parser::diagnostics::DiagnosticLevel::Warning
+                        luanext_parser::diagnostics::DiagnosticLevel::Warning
                     }
-                    DiagnosticLevel::Info => typedlua_parser::diagnostics::DiagnosticLevel::Info,
+                    DiagnosticLevel::Info => luanext_parser::diagnostics::DiagnosticLevel::Info,
                 };
                 let code = d
                     .code
-                    .map(|c| typedlua_parser::diagnostics::DiagnosticCode::new(c.prefix, c.code));
-                typedlua_parser::Diagnostic {
+                    .map(|c| luanext_parser::diagnostics::DiagnosticCode::new(c.prefix, c.code));
+                luanext_parser::Diagnostic {
                     level,
                     span: d.span,
                     message: d.message,
@@ -646,7 +646,7 @@ impl typedlua_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
                         .related_information
                         .into_iter()
                         .map(
-                            |r| typedlua_parser::diagnostics::DiagnosticRelatedInformation {
+                            |r| luanext_parser::diagnostics::DiagnosticRelatedInformation {
                                 span: r.span,
                                 message: r.message,
                             },
@@ -655,7 +655,7 @@ impl typedlua_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
                     suggestions: d
                         .suggestions
                         .into_iter()
-                        .map(|s| typedlua_parser::diagnostics::DiagnosticSuggestion {
+                        .map(|s| luanext_parser::diagnostics::DiagnosticSuggestion {
                             span: s.span,
                             replacement: s.replacement,
                             message: s.message,
@@ -667,8 +667,8 @@ impl typedlua_parser::DiagnosticHandler for ConsoleDiagnosticHandler {
     }
 }
 
-impl typedlua_parser::DiagnosticHandler for CollectingDiagnosticHandler {
-    fn report(&self, diagnostic: typedlua_parser::Diagnostic) {
+impl luanext_parser::DiagnosticHandler for CollectingDiagnosticHandler {
+    fn report(&self, diagnostic: luanext_parser::Diagnostic) {
         DiagnosticHandler::report(self, convert_parser_diagnostic(diagnostic));
     }
 
@@ -684,21 +684,21 @@ impl typedlua_parser::DiagnosticHandler for CollectingDiagnosticHandler {
         DiagnosticHandler::warning_count(self)
     }
 
-    fn get_diagnostics(&self) -> Vec<typedlua_parser::Diagnostic> {
+    fn get_diagnostics(&self) -> Vec<luanext_parser::Diagnostic> {
         DiagnosticHandler::get_diagnostics(self)
             .into_iter()
             .map(|d| {
                 let level = match d.level {
-                    DiagnosticLevel::Error => typedlua_parser::diagnostics::DiagnosticLevel::Error,
+                    DiagnosticLevel::Error => luanext_parser::diagnostics::DiagnosticLevel::Error,
                     DiagnosticLevel::Warning => {
-                        typedlua_parser::diagnostics::DiagnosticLevel::Warning
+                        luanext_parser::diagnostics::DiagnosticLevel::Warning
                     }
-                    DiagnosticLevel::Info => typedlua_parser::diagnostics::DiagnosticLevel::Info,
+                    DiagnosticLevel::Info => luanext_parser::diagnostics::DiagnosticLevel::Info,
                 };
                 let code = d
                     .code
-                    .map(|c| typedlua_parser::diagnostics::DiagnosticCode::new(c.prefix, c.code));
-                typedlua_parser::Diagnostic {
+                    .map(|c| luanext_parser::diagnostics::DiagnosticCode::new(c.prefix, c.code));
+                luanext_parser::Diagnostic {
                     level,
                     span: d.span,
                     message: d.message,
@@ -707,7 +707,7 @@ impl typedlua_parser::DiagnosticHandler for CollectingDiagnosticHandler {
                         .related_information
                         .into_iter()
                         .map(
-                            |r| typedlua_parser::diagnostics::DiagnosticRelatedInformation {
+                            |r| luanext_parser::diagnostics::DiagnosticRelatedInformation {
                                 span: r.span,
                                 message: r.message,
                             },
@@ -716,7 +716,7 @@ impl typedlua_parser::DiagnosticHandler for CollectingDiagnosticHandler {
                     suggestions: d
                         .suggestions
                         .into_iter()
-                        .map(|s| typedlua_parser::diagnostics::DiagnosticSuggestion {
+                        .map(|s| luanext_parser::diagnostics::DiagnosticSuggestion {
                             span: s.span,
                             replacement: s.replacement,
                             message: s.message,

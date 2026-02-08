@@ -7,11 +7,11 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::*;
-use typedlua_parser::ast::types::*;
-use typedlua_parser::prelude::EnumValue;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::ast::pattern::Pattern;
+use luanext_parser::ast::statement::*;
+use luanext_parser::ast::types::*;
+use luanext_parser::prelude::EnumValue;
+use luanext_parser::string_interner::StringInterner;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeclarationId {
@@ -377,7 +377,7 @@ impl IncrementalChecker {
 
     pub fn compute_declaration_hashes(
         &self,
-        program: &typedlua_parser::ast::Program<'_>,
+        program: &luanext_parser::ast::Program<'_>,
         module_path: PathBuf,
         interner: &StringInterner,
     ) -> FxHashMap<DeclarationId, u64> {

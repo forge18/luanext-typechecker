@@ -13,16 +13,16 @@
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
 use bumpalo::Bump;
-use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
-use typedlua_parser::ast::statement::{
+use luanext_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
+use luanext_parser::ast::statement::{
     DeclareConstStatement, DeclareFunctionStatement, DeclareNamespaceStatement,
     FunctionDeclaration, MethodSignature, PropertySignature, Statement,
 };
-use typedlua_parser::ast::types::{
+use luanext_parser::ast::types::{
     FunctionType, ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind,
 };
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::span::Span;
+use luanext_parser::string_interner::StringInterner;
 
 /// Register a function signature in the symbol table.
 ///

@@ -3,9 +3,9 @@
 //! This module provides utilities for analyzing control flow in TypedLua programs,
 //! including checking whether code paths always return or terminate.
 
-use typedlua_parser::ast::expression::ExpressionKind;
-use typedlua_parser::ast::statement::{Block, Statement};
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::ast::expression::ExpressionKind;
+use luanext_parser::ast::statement::{Block, Statement};
+use luanext_parser::string_interner::StringInterner;
 
 /// Check if a block always returns (has a return statement on all code paths).
 ///

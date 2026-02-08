@@ -1,10 +1,10 @@
 use rustc_hash::FxHashMap;
-use typedlua_parser::ast::statement::TypeParameter;
-use typedlua_parser::ast::types::{Type, TypeKind, TypeReference};
-use typedlua_parser::string_interner::StringId;
+use luanext_parser::ast::statement::TypeParameter;
+use luanext_parser::ast::types::{Type, TypeKind, TypeReference};
+use luanext_parser::string_interner::StringId;
 
 #[cfg(test)]
-use typedlua_parser::span::Span;
+use luanext_parser::span::Span;
 
 /// Substitutes type parameters with concrete types in a type
 pub fn instantiate_type<'arena>(
@@ -128,7 +128,7 @@ fn substitute_type<'arena>(
 
         // Function type: substitute parameter and return types
         TypeKind::Function(func_type) => {
-            use typedlua_parser::ast::statement::Parameter;
+            use luanext_parser::ast::statement::Parameter;
 
             let substituted_params: Result<Vec<Parameter<'arena>>, String> = func_type
                 .parameters
@@ -153,7 +153,7 @@ fn substitute_type<'arena>(
             let substituted_return = substitute_type(arena, func_type.return_type, substitutions)?;
 
             Ok(Type::new(
-                TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+                TypeKind::Function(luanext_parser::ast::types::FunctionType {
                     type_parameters: None, // Type parameters are gone after substitution
                     parameters: arena.alloc_slice_fill_iter(substituted_params?),
                     return_type: arena.alloc(substituted_return),
@@ -184,8 +184,8 @@ fn substitute_type<'arena>(
 
         // Object type: substitute property type annotations
         TypeKind::Object(obj_type) => {
-            use typedlua_parser::ast::statement::{MethodSignature, PropertySignature};
-            use typedlua_parser::ast::types::ObjectTypeMember;
+            use luanext_parser::ast::statement::{MethodSignature, PropertySignature};
+            use luanext_parser::ast::types::ObjectTypeMember;
 
             let mut substituted_members: Vec<ObjectTypeMember<'arena>> = Vec::new();
             for member in obj_type.members.iter() {
@@ -215,7 +215,7 @@ fn substitute_type<'arena>(
                         let substituted_value =
                             substitute_type(arena, &index.value_type, substitutions)?;
 
-                        ObjectTypeMember::Index(typedlua_parser::ast::statement::IndexSignature {
+                        ObjectTypeMember::Index(luanext_parser::ast::statement::IndexSignature {
                             value_type: substituted_value,
                             ..index.clone()
                         })
@@ -225,7 +225,7 @@ fn substitute_type<'arena>(
             }
 
             Ok(Type::new(
-                TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+                TypeKind::Object(luanext_parser::ast::types::ObjectType {
                     members: arena.alloc_slice_fill_iter(substituted_members),
                     span: obj_type.span,
                 }),
@@ -280,7 +280,7 @@ fn is_type_compatible<'arena>(arg: &Type<'arena>, constraint: &Type<'arena>) -> 
 /// Returns a map from type parameter name to inferred type
 pub fn infer_type_arguments<'arena>(
     type_params: &[TypeParameter<'arena>],
-    function_params: &[typedlua_parser::ast::statement::Parameter<'arena>],
+    function_params: &[luanext_parser::ast::statement::Parameter<'arena>],
     arg_types: &[Type<'arena>],
 ) -> Result<Vec<Type<'arena>>, String> {
     if function_params.len() != arg_types.len() {
@@ -415,10 +415,10 @@ pub fn build_substitutions<'arena>(
 /// Clones the block and substitutes type annotations in all statements
 pub fn instantiate_block<'arena>(
     arena: &'arena bumpalo::Bump,
-    block: &typedlua_parser::ast::statement::Block<'arena>,
+    block: &luanext_parser::ast::statement::Block<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Block<'arena> {
-    use typedlua_parser::ast::statement::Block;
+) -> luanext_parser::ast::statement::Block<'arena> {
+    use luanext_parser::ast::statement::Block;
 
     let stmts: Vec<_> = block
         .statements
@@ -434,10 +434,10 @@ pub fn instantiate_block<'arena>(
 /// Instantiate a statement with type substitutions
 pub fn instantiate_statement<'arena>(
     arena: &'arena bumpalo::Bump,
-    stmt: &typedlua_parser::ast::statement::Statement<'arena>,
+    stmt: &luanext_parser::ast::statement::Statement<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Statement<'arena> {
-    use typedlua_parser::ast::statement::{
+) -> luanext_parser::ast::statement::Statement<'arena> {
+    use luanext_parser::ast::statement::{
         ElseIf, ForGeneric, ForNumeric, ForStatement, IfStatement, RepeatStatement,
         ReturnStatement, Statement, ThrowStatement, VariableDeclaration, WhileStatement,
     };
@@ -576,15 +576,15 @@ pub fn instantiate_statement<'arena>(
 /// Instantiate a function declaration with type substitutions
 pub fn instantiate_function_declaration<'arena>(
     arena: &'arena bumpalo::Bump,
-    func: &typedlua_parser::ast::statement::FunctionDeclaration<'arena>,
+    func: &luanext_parser::ast::statement::FunctionDeclaration<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::FunctionDeclaration<'arena> {
+) -> luanext_parser::ast::statement::FunctionDeclaration<'arena> {
     let params: Vec<_> = func
         .parameters
         .iter()
         .map(|p| instantiate_parameter(arena, p, substitutions))
         .collect();
-    typedlua_parser::ast::statement::FunctionDeclaration {
+    luanext_parser::ast::statement::FunctionDeclaration {
         name: func.name.clone(),
         type_parameters: None, // Remove type parameters after specialization
         parameters: arena.alloc_slice_fill_iter(params),
@@ -601,10 +601,10 @@ pub fn instantiate_function_declaration<'arena>(
 /// Instantiate a parameter with type substitutions
 pub fn instantiate_parameter<'arena>(
     arena: &'arena bumpalo::Bump,
-    param: &typedlua_parser::ast::statement::Parameter<'arena>,
+    param: &luanext_parser::ast::statement::Parameter<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::statement::Parameter<'arena> {
-    typedlua_parser::ast::statement::Parameter {
+) -> luanext_parser::ast::statement::Parameter<'arena> {
+    luanext_parser::ast::statement::Parameter {
         pattern: param.pattern.clone(),
         type_annotation: param
             .type_annotation
@@ -623,10 +623,10 @@ pub fn instantiate_parameter<'arena>(
 /// Instantiate an expression with type substitutions
 pub fn instantiate_expression<'arena>(
     arena: &'arena bumpalo::Bump,
-    expr: &typedlua_parser::ast::expression::Expression<'arena>,
+    expr: &luanext_parser::ast::expression::Expression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::Expression<'arena> {
-    use typedlua_parser::ast::expression::{Expression, ExpressionKind};
+) -> luanext_parser::ast::expression::Expression<'arena> {
+    use luanext_parser::ast::expression::{Expression, ExpressionKind};
 
     let new_kind = match &expr.kind {
         ExpressionKind::Literal(lit) => ExpressionKind::Literal(lit.clone()),
@@ -848,10 +848,10 @@ pub fn instantiate_expression<'arena>(
 /// Helper to instantiate an argument
 fn instantiate_argument<'arena>(
     arena: &'arena bumpalo::Bump,
-    arg: &typedlua_parser::ast::expression::Argument<'arena>,
+    arg: &luanext_parser::ast::expression::Argument<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::Argument<'arena> {
-    typedlua_parser::ast::expression::Argument {
+) -> luanext_parser::ast::expression::Argument<'arena> {
+    luanext_parser::ast::expression::Argument {
         value: instantiate_expression(arena, &arg.value, substitutions),
         is_spread: arg.is_spread,
         span: arg.span,
@@ -861,10 +861,10 @@ fn instantiate_argument<'arena>(
 /// Helper to instantiate an array element
 fn instantiate_array_element<'arena>(
     arena: &'arena bumpalo::Bump,
-    elem: &typedlua_parser::ast::expression::ArrayElement<'arena>,
+    elem: &luanext_parser::ast::expression::ArrayElement<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ArrayElement<'arena> {
-    use typedlua_parser::ast::expression::ArrayElement;
+) -> luanext_parser::ast::expression::ArrayElement<'arena> {
+    use luanext_parser::ast::expression::ArrayElement;
     match elem {
         ArrayElement::Expression(e) => {
             ArrayElement::Expression(instantiate_expression(arena, e, substitutions))
@@ -878,10 +878,10 @@ fn instantiate_array_element<'arena>(
 /// Helper to instantiate an object property
 fn instantiate_object_property<'arena>(
     arena: &'arena bumpalo::Bump,
-    prop: &typedlua_parser::ast::expression::ObjectProperty<'arena>,
+    prop: &luanext_parser::ast::expression::ObjectProperty<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ObjectProperty<'arena> {
-    use typedlua_parser::ast::expression::ObjectProperty;
+) -> luanext_parser::ast::expression::ObjectProperty<'arena> {
+    use luanext_parser::ast::expression::ObjectProperty;
     match prop {
         ObjectProperty::Property { key, value, span } => ObjectProperty::Property {
             key: key.clone(),
@@ -903,15 +903,15 @@ fn instantiate_object_property<'arena>(
 /// Helper to instantiate a function expression
 fn instantiate_function_expression<'arena>(
     arena: &'arena bumpalo::Bump,
-    func: &typedlua_parser::ast::expression::FunctionExpression<'arena>,
+    func: &luanext_parser::ast::expression::FunctionExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::FunctionExpression<'arena> {
+) -> luanext_parser::ast::expression::FunctionExpression<'arena> {
     let params: Vec<_> = func
         .parameters
         .iter()
         .map(|p| instantiate_parameter(arena, p, substitutions))
         .collect();
-    typedlua_parser::ast::expression::FunctionExpression {
+    luanext_parser::ast::expression::FunctionExpression {
         type_parameters: None, // Remove type parameters after specialization
         parameters: arena.alloc_slice_fill_iter(params),
         return_type: func
@@ -926,10 +926,10 @@ fn instantiate_function_expression<'arena>(
 /// Helper to instantiate an arrow function
 fn instantiate_arrow_function<'arena>(
     arena: &'arena bumpalo::Bump,
-    arrow: &typedlua_parser::ast::expression::ArrowFunction<'arena>,
+    arrow: &luanext_parser::ast::expression::ArrowFunction<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::ArrowFunction<'arena> {
-    use typedlua_parser::ast::expression::{ArrowBody, ArrowFunction};
+) -> luanext_parser::ast::expression::ArrowFunction<'arena> {
+    use luanext_parser::ast::expression::{ArrowBody, ArrowFunction};
     let params: Vec<_> = arrow
         .parameters
         .iter()
@@ -954,10 +954,10 @@ fn instantiate_arrow_function<'arena>(
 /// Helper to instantiate a template literal
 fn instantiate_template_literal<'arena>(
     arena: &'arena bumpalo::Bump,
-    template: &typedlua_parser::ast::expression::TemplateLiteral<'arena>,
+    template: &luanext_parser::ast::expression::TemplateLiteral<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::TemplateLiteral<'arena> {
-    use typedlua_parser::ast::expression::{TemplateLiteral, TemplatePart};
+) -> luanext_parser::ast::expression::TemplateLiteral<'arena> {
+    use luanext_parser::ast::expression::{TemplateLiteral, TemplatePart};
     let parts: Vec<_> = template
         .parts
         .iter()
@@ -977,10 +977,10 @@ fn instantiate_template_literal<'arena>(
 /// Helper to instantiate a match expression
 fn instantiate_match_expression<'arena>(
     arena: &'arena bumpalo::Bump,
-    match_expr: &typedlua_parser::ast::expression::MatchExpression<'arena>,
+    match_expr: &luanext_parser::ast::expression::MatchExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::MatchExpression<'arena> {
-    use typedlua_parser::ast::expression::{MatchArm, MatchArmBody, MatchExpression};
+) -> luanext_parser::ast::expression::MatchExpression<'arena> {
+    use luanext_parser::ast::expression::{MatchArm, MatchArmBody, MatchExpression};
     let arms: Vec<_> = match_expr
         .arms
         .iter()
@@ -1015,10 +1015,10 @@ fn instantiate_match_expression<'arena>(
 /// Helper to instantiate a try expression
 fn instantiate_try_expression<'arena>(
     arena: &'arena bumpalo::Bump,
-    try_expr: &typedlua_parser::ast::expression::TryExpression<'arena>,
+    try_expr: &luanext_parser::ast::expression::TryExpression<'arena>,
     substitutions: &FxHashMap<StringId, Type<'arena>>,
-) -> typedlua_parser::ast::expression::TryExpression<'arena> {
-    typedlua_parser::ast::expression::TryExpression {
+) -> luanext_parser::ast::expression::TryExpression<'arena> {
+    luanext_parser::ast::expression::TryExpression {
         expression: arena.alloc(instantiate_expression(
             arena,
             try_expr.expression,
@@ -1038,14 +1038,14 @@ fn instantiate_try_expression<'arena>(
 mod tests {
     use super::*;
     use bumpalo::Bump;
-    use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
-    use typedlua_parser::ast::Spanned;
+    use luanext_parser::ast::types::{PrimitiveType, TypeKind};
+    use luanext_parser::ast::Spanned;
 
     #[test]
     fn test_instantiate_simple_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         // Type parameter T
@@ -1089,7 +1089,7 @@ mod tests {
     fn test_instantiate_array_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         // Type parameter T
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_wrong_number_of_type_args() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         // Type parameter T
@@ -1172,12 +1172,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_simple() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let _x_id = interner.intern("x");
 
@@ -1224,12 +1224,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_array() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let values_id = interner.intern("values");
 
@@ -1285,7 +1285,7 @@ mod tests {
     fn test_check_constraints_pass() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         // Type parameter T extends number
@@ -1309,7 +1309,7 @@ mod tests {
     fn test_check_constraints_fail() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         // Type parameter T extends number
@@ -1337,7 +1337,7 @@ mod tests {
     fn test_build_substitutions_success() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -1372,7 +1372,7 @@ mod tests {
     fn test_build_substitutions_wrong_count() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1396,7 +1396,7 @@ mod tests {
     fn test_instantiate_tuple_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -1468,7 +1468,7 @@ mod tests {
     fn test_instantiate_union_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1518,7 +1518,7 @@ mod tests {
     fn test_instantiate_function_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1528,12 +1528,12 @@ mod tests {
             span,
         };
 
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let param_id = interner.intern("x");
         let func_type = Type::new(
-            TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+            TypeKind::Function(luanext_parser::ast::types::FunctionType {
                 type_parameters: None,
                 parameters: arena.alloc_slice_fill_iter([Parameter {
                     pattern: Pattern::Identifier(Spanned::new(param_id, span)),
@@ -1592,7 +1592,7 @@ mod tests {
     fn test_instantiate_nullable_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1635,7 +1635,7 @@ mod tests {
     fn test_instantiate_nested_generic() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1682,12 +1682,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_multiple_params() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -1765,12 +1765,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_with_default() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -1830,12 +1830,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_wrong_arg_count() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -1884,7 +1884,7 @@ mod tests {
     fn test_instantiate_block_empty() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let block = typedlua_parser::ast::statement::Block {
+        let block = luanext_parser::ast::statement::Block {
             statements: &[],
             span,
         };
@@ -1899,9 +1899,9 @@ mod tests {
     fn test_instantiate_expression_literal() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let expr = typedlua_parser::ast::expression::Expression {
-            kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                typedlua_parser::ast::expression::Literal::Number(42.0),
+        let expr = luanext_parser::ast::expression::Expression {
+            kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                luanext_parser::ast::expression::Literal::Number(42.0),
             ),
             span,
             annotated_type: None,
@@ -1913,8 +1913,8 @@ mod tests {
 
         assert!(matches!(
             result.kind,
-            typedlua_parser::ast::expression::ExpressionKind::Literal(
-                typedlua_parser::ast::expression::Literal::Number(42.0)
+            luanext_parser::ast::expression::ExpressionKind::Literal(
+                luanext_parser::ast::expression::Literal::Number(42.0)
             )
         ));
     }
@@ -1923,13 +1923,13 @@ mod tests {
     fn test_instantiate_parameter_with_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
-        use typedlua_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::pattern::Pattern;
 
         let x_id = interner.intern("x");
-        let param = typedlua_parser::ast::statement::Parameter {
+        let param = luanext_parser::ast::statement::Parameter {
             pattern: Pattern::Identifier(Spanned::new(x_id, span)),
             type_annotation: Some(Type::new(
                 TypeKind::Reference(TypeReference {
@@ -1962,7 +1962,7 @@ mod tests {
     fn test_instantiate_parenthesized_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -2005,7 +2005,7 @@ mod tests {
     fn test_instantiate_intersection_type() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -2077,7 +2077,7 @@ mod tests {
     fn test_instantiate_object_type_with_property() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -2090,10 +2090,10 @@ mod tests {
         let value_id = interner.intern("value");
 
         let obj_type = Type::new(
-            TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+            TypeKind::Object(luanext_parser::ast::types::ObjectType {
                 members: arena.alloc_slice_fill_iter([
-                    typedlua_parser::ast::types::ObjectTypeMember::Property(
-                        typedlua_parser::ast::statement::PropertySignature {
+                    luanext_parser::ast::types::ObjectTypeMember::Property(
+                        luanext_parser::ast::statement::PropertySignature {
                             name: Spanned::new(value_id, span),
                             type_annotation: Type::new(
                                 TypeKind::Reference(TypeReference {
@@ -2121,7 +2121,7 @@ mod tests {
         match &result.kind {
             TypeKind::Object(obj) => {
                 assert_eq!(obj.members.len(), 1);
-                if let typedlua_parser::ast::types::ObjectTypeMember::Property(prop) =
+                if let luanext_parser::ast::types::ObjectTypeMember::Property(prop) =
                     &obj.members[0]
                 {
                     assert!(matches!(
@@ -2140,7 +2140,7 @@ mod tests {
     fn test_instantiate_object_type_with_method() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -2153,10 +2153,10 @@ mod tests {
         let method_id = interner.intern("getValue");
 
         let obj_type = Type::new(
-            TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+            TypeKind::Object(luanext_parser::ast::types::ObjectType {
                 members: arena.alloc_slice_fill_iter([
-                    typedlua_parser::ast::types::ObjectTypeMember::Method(
-                        typedlua_parser::ast::statement::MethodSignature {
+                    luanext_parser::ast::types::ObjectTypeMember::Method(
+                        luanext_parser::ast::statement::MethodSignature {
                             name: Spanned::new(method_id, span),
                             type_parameters: None,
                             parameters: &[],
@@ -2185,7 +2185,7 @@ mod tests {
         match &result.kind {
             TypeKind::Object(obj) => {
                 assert_eq!(obj.members.len(), 1);
-                if let typedlua_parser::ast::types::ObjectTypeMember::Method(method) =
+                if let luanext_parser::ast::types::ObjectTypeMember::Method(method) =
                     &obj.members[0]
                 {
                     assert!(matches!(
@@ -2204,7 +2204,7 @@ mod tests {
     fn test_instantiate_object_type_with_index_signature() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -2217,12 +2217,12 @@ mod tests {
         let key_id = interner.intern("key");
 
         let obj_type = Type::new(
-            TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+            TypeKind::Object(luanext_parser::ast::types::ObjectType {
                 members: arena.alloc_slice_fill_iter([
-                    typedlua_parser::ast::types::ObjectTypeMember::Index(
-                        typedlua_parser::ast::statement::IndexSignature {
+                    luanext_parser::ast::types::ObjectTypeMember::Index(
+                        luanext_parser::ast::statement::IndexSignature {
                             key_name: Spanned::new(key_id, span),
-                            key_type: typedlua_parser::ast::statement::IndexKeyType::String,
+                            key_type: luanext_parser::ast::statement::IndexKeyType::String,
                             value_type: Type::new(
                                 TypeKind::Reference(TypeReference {
                                     name: Spanned::new(t_id, span),
@@ -2247,7 +2247,7 @@ mod tests {
         match &result.kind {
             TypeKind::Object(obj) => {
                 assert_eq!(obj.members.len(), 1);
-                if let typedlua_parser::ast::types::ObjectTypeMember::Index(idx) = &obj.members[0] {
+                if let luanext_parser::ast::types::ObjectTypeMember::Index(idx) = &obj.members[0] {
                     assert!(matches!(
                         idx.value_type.kind,
                         TypeKind::Primitive(PrimitiveType::Number)
@@ -2264,7 +2264,7 @@ mod tests {
     fn test_substitute_type_with_type_args_error() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let type_param = TypeParameter {
@@ -2314,7 +2314,7 @@ mod tests {
     fn test_check_type_constraints_with_multiple_params() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -2348,7 +2348,7 @@ mod tests {
     fn test_check_type_constraints_second_param_fails() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let u_id = interner.intern("U");
 
@@ -2415,7 +2415,7 @@ mod tests {
     fn test_types_equal_references() {
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
 
         let ref1 = Type::new(
@@ -2440,12 +2440,12 @@ mod tests {
 
     #[test]
     fn test_infer_type_arguments_conflict() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
 
         let arena = Bump::new();
         let span = Span::new(0, 0, 0, 0);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let t_id = interner.intern("T");
         let x_id = interner.intern("x");
 

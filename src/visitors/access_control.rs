@@ -1,10 +1,10 @@
 use super::TypeCheckVisitor;
 use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
-use typedlua_parser::ast::statement::{AccessModifier, Parameter};
-use typedlua_parser::ast::types::Type;
-use typedlua_parser::prelude::OperatorKind;
-use typedlua_parser::span::Span;
+use luanext_parser::ast::statement::{AccessModifier, Parameter};
+use luanext_parser::ast::types::Type;
+use luanext_parser::prelude::OperatorKind;
+use luanext_parser::span::Span;
 
 /// Information about a class member for access checking
 #[derive(Clone)]
@@ -45,7 +45,7 @@ pub struct ClassContext<'arena> {
     pub(crate) name: String,
     pub(crate) parent: Option<String>,
     /// The full extends type (preserves type arguments for generic parent classes)
-    pub(crate) extends_type: Option<typedlua_parser::ast::types::Type<'arena>>,
+    pub(crate) extends_type: Option<luanext_parser::ast::types::Type<'arena>>,
 }
 
 /// Trait for access control checks on class members
@@ -337,7 +337,7 @@ impl<'arena> AccessControlVisitor<'arena> for AccessControl<'arena> {
             // For readonly classes, all properties are effectively final
             return Err(TypeCheckError::new(
                 format!("Cannot assign to readonly property '{}'", member_name),
-                typedlua_parser::span::Span::default(),
+                luanext_parser::span::Span::default(),
             ));
         }
         // Check individual property finality even on non-readonly classes
@@ -345,7 +345,7 @@ impl<'arena> AccessControlVisitor<'arena> for AccessControl<'arena> {
             if member.is_final {
                 return Err(TypeCheckError::new(
                     format!("Cannot assign to readonly property '{}'", member_name),
-                    typedlua_parser::span::Span::default(),
+                    luanext_parser::span::Span::default(),
                 ));
             }
         }

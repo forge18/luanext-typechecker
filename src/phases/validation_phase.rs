@@ -20,14 +20,14 @@ use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use typedlua_parser::ast::expression::Expression;
-use typedlua_parser::ast::statement::{
+use luanext_parser::ast::expression::Expression;
+use luanext_parser::ast::statement::{
     ClassMember, Decorator, DecoratorExpression, IndexSignature, MethodDeclaration, TypeParameter,
 };
-use typedlua_parser::ast::types::{ObjectTypeMember, Type};
-use typedlua_parser::prelude::ClassDeclaration;
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::ast::types::{ObjectTypeMember, Type};
+use luanext_parser::prelude::ClassDeclaration;
+use luanext_parser::span::Span;
+use luanext_parser::string_interner::StringInterner;
 
 /// Validate interface members for duplicate property names.
 ///
@@ -570,8 +570,8 @@ pub fn check_class_implements_interface<'arena>(
     type_env: &crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<(), TypeCheckError> {
-    use typedlua_parser::ast::statement::ClassMember;
-    use typedlua_parser::ast::types::{ObjectTypeMember, TypeKind};
+    use luanext_parser::ast::statement::ClassMember;
+    use luanext_parser::ast::types::{ObjectTypeMember, TypeKind};
 
     if let TypeKind::Object(obj_type) = &interface.kind {
         for required_member in obj_type.members.iter() {
@@ -725,7 +725,7 @@ pub fn check_implements_assignable<'arena>(
     type_env: &crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> bool {
-    use typedlua_parser::ast::types::TypeKind;
+    use luanext_parser::ast::types::TypeKind;
 
     if let (TypeKind::Reference(s_ref), TypeKind::Reference(t_ref)) = (&source.kind, &target.kind) {
         let source_name = interner.resolve(s_ref.name.node);
@@ -775,13 +775,13 @@ pub fn check_implements_assignable<'arena>(
 /// Returns Ok(parent_name) if inheritance is valid, or an error if validation fails.
 pub fn validate_class_inheritance(
     class_name: &str,
-    extends_type: &typedlua_parser::ast::types::Type,
+    extends_type: &luanext_parser::ast::types::Type,
     access_control: &crate::visitors::AccessControl,
     class_parents: &mut rustc_hash::FxHashMap<String, String>,
-    interner: &typedlua_parser::string_interner::StringInterner,
-    span: typedlua_parser::span::Span,
+    interner: &luanext_parser::string_interner::StringInterner,
+    span: luanext_parser::span::Span,
 ) -> Result<String, crate::TypeCheckError> {
-    use typedlua_parser::ast::types::TypeKind;
+    use luanext_parser::ast::types::TypeKind;
 
     if let TypeKind::Reference(type_ref) = &extends_type.kind {
         let parent_name = interner.resolve(type_ref.name.node).to_string();

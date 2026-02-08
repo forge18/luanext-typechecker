@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
-use typedlua_parser::ast::expression::{BinaryOp, Expression, ExpressionKind, Literal, UnaryOp};
-use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-use typedlua_parser::string_interner::StringId;
+use luanext_parser::ast::expression::{BinaryOp, Expression, ExpressionKind, Literal, UnaryOp};
+use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+use luanext_parser::string_interner::StringId;
 
 /// Trait for type narrowing operations
 ///
@@ -19,7 +19,7 @@ pub trait NarrowingVisitor<'arena> {
         condition: &Expression<'arena>,
         base_ctx: &NarrowingContext<'arena>,
         original_types: &FxHashMap<StringId, Type<'arena>>,
-        interner: &typedlua_parser::string_interner::StringInterner,
+        interner: &luanext_parser::string_interner::StringInterner,
     ) -> (NarrowingContext<'arena>, NarrowingContext<'arena>);
 
     /// Get the current narrowing context
@@ -114,7 +114,7 @@ impl<'arena> NarrowingVisitor<'arena> for TypeNarrower<'arena> {
         condition: &Expression<'arena>,
         base_ctx: &NarrowingContext<'arena>,
         original_types: &FxHashMap<StringId, Type<'arena>>,
-        interner: &typedlua_parser::string_interner::StringInterner,
+        interner: &luanext_parser::string_interner::StringInterner,
     ) -> (NarrowingContext<'arena>, NarrowingContext<'arena>) {
         narrow_type_from_condition(arena, condition, base_ctx, original_types, interner)
     }
@@ -135,7 +135,7 @@ pub fn narrow_type_from_condition<'arena>(
     condition: &Expression<'arena>,
     base_ctx: &NarrowingContext<'arena>,
     original_types: &FxHashMap<StringId, Type<'arena>>,
-    interner: &typedlua_parser::string_interner::StringInterner,
+    interner: &luanext_parser::string_interner::StringInterner,
 ) -> (NarrowingContext<'arena>, NarrowingContext<'arena>) {
     let mut then_ctx = base_ctx.clone_for_branch();
     let mut else_ctx = base_ctx.clone_for_branch();
@@ -268,8 +268,8 @@ pub fn narrow_type_from_condition<'arena>(
                     // In then branch: narrow to the class type
                     // For now, create a reference to the class type
                     let class_type = Type::new(
-                        TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                            name: typedlua_parser::ast::Ident::new(*class_name, condition.span),
+                        TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                            name: luanext_parser::ast::Ident::new(*class_name, condition.span),
                             type_arguments: None,
                             span: condition.span,
                         }),
@@ -312,7 +312,7 @@ pub fn narrow_type_from_condition<'arena>(
 
 /// Extract typeof check: typeof x == "string" -> Some((x, "string"))
 fn extract_typeof_check<'arena>(
-    interner: &typedlua_parser::string_interner::StringInterner,
+    interner: &luanext_parser::string_interner::StringInterner,
     left: &Expression<'arena>,
     right: &Expression<'arena>,
 ) -> Option<(StringId, String)> {
@@ -349,7 +349,7 @@ fn extract_typeof_check<'arena>(
 /// Type guards are functions with return type `param is Type`
 fn extract_type_guard_call<'arena>(
     function: &Expression<'arena>,
-    arguments: &[typedlua_parser::ast::expression::Argument],
+    arguments: &[luanext_parser::ast::expression::Argument],
     original_types: &FxHashMap<StringId, Type<'arena>>,
 ) -> Option<(StringId, Type<'arena>)> {
     // Check if this is a function call with one argument
@@ -385,7 +385,7 @@ fn extract_type_guard_call<'arena>(
 
 /// Extract nil check: x == nil -> Some((x, true))
 fn extract_nil_check<'arena>(
-    _interner: &typedlua_parser::string_interner::StringInterner,
+    _interner: &luanext_parser::string_interner::StringInterner,
     left: &Expression<'arena>,
     right: &Expression<'arena>,
 ) -> Option<(StringId, bool)> {
@@ -408,7 +408,7 @@ fn extract_nil_check<'arena>(
 
 /// Convert typeof string to a type
 fn typeof_string_to_type<'arena>(type_name: &str) -> Option<Type<'arena>> {
-    let span = typedlua_parser::span::Span::new(0, 0, 0, 0);
+    let span = luanext_parser::span::Span::new(0, 0, 0, 0);
     match type_name {
         "nil" => Some(Type::new(TypeKind::Primitive(PrimitiveType::Nil), span)),
         "boolean" => Some(Type::new(TypeKind::Primitive(PrimitiveType::Boolean), span)),
@@ -584,7 +584,7 @@ fn types_equal<'arena>(t1: &Type<'arena>, t2: &Type<'arena>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::span::Span;
+    use luanext_parser::span::Span;
 
     fn make_span() -> Span {
         Span::new(0, 0, 0, 0)
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_narrowing_context_basic() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut ctx = NarrowingContext::new();
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
@@ -609,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_narrowing_context_merge() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut then_ctx = NarrowingContext::new();
         let mut else_ctx = NarrowingContext::new();
 
@@ -676,14 +676,14 @@ mod tests {
     #[test]
     fn test_narrowing_context_default() {
         let ctx: NarrowingContext = Default::default();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
         assert!(ctx.get_narrowed_type(x_id).is_none());
     }
 
     #[test]
     fn test_narrowing_context_clone_for_branch() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut ctx = NarrowingContext::new();
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn test_narrowing_context_merge_different_types() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut then_ctx = NarrowingContext::new();
         let mut else_ctx = NarrowingContext::new();
 
@@ -730,7 +730,7 @@ mod tests {
         let merged = NarrowingContext::merge(&then_ctx, &else_ctx);
         // Should be empty
         assert!(merged
-            .get_narrowed_type(typedlua_parser::string_interner::StringId::from_u32(0))
+            .get_narrowed_type(luanext_parser::string_interner::StringId::from_u32(0))
             .is_none());
     }
 
@@ -739,7 +739,7 @@ mod tests {
         let narrower = TypeNarrower::new();
         assert!(narrower
             .get_context()
-            .get_narrowed_type(typedlua_parser::string_interner::StringId::from_u32(0))
+            .get_narrowed_type(luanext_parser::string_interner::StringId::from_u32(0))
             .is_none());
     }
 
@@ -748,14 +748,14 @@ mod tests {
         let narrower: TypeNarrower = Default::default();
         assert!(narrower
             .get_context()
-            .get_narrowed_type(typedlua_parser::string_interner::StringId::from_u32(0))
+            .get_narrowed_type(luanext_parser::string_interner::StringId::from_u32(0))
             .is_none());
     }
 
     #[test]
     fn test_type_narrower_get_context_mut() {
         let mut narrower = TypeNarrower::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
         let x_id = interner.intern("x");
@@ -984,7 +984,7 @@ mod tests {
 
     #[test]
     fn test_extract_nil_check_basic() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
 
         // x == nil
@@ -1010,7 +1010,7 @@ mod tests {
 
     #[test]
     fn test_extract_nil_check_reversed() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
 
         // nil == x
@@ -1033,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_extract_nil_check_not_nil() {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
 
         // x == "string" - not a nil check

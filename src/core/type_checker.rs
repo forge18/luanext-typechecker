@@ -16,12 +16,12 @@ use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, span, Level};
-use typedlua_parser::ast::expression::*;
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::*;
-use typedlua_parser::ast::types::*;
-use typedlua_parser::ast::Program;
-use typedlua_parser::span::Span;
+use luanext_parser::ast::expression::*;
+use luanext_parser::ast::pattern::Pattern;
+use luanext_parser::ast::statement::*;
+use luanext_parser::ast::types::*;
+use luanext_parser::ast::Program;
+use luanext_parser::span::Span;
 
 /// Type checker for TypedLua programs
 pub struct TypeChecker<'a, 'arena> {
@@ -47,14 +47,14 @@ pub struct TypeChecker<'a, 'arena> {
     current_namespace: Option<Vec<String>>,
     /// Type parameters for each generic class (needed for override checking)
     class_type_params:
-        FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>>,
+        FxHashMap<String, Vec<luanext_parser::ast::statement::TypeParameter<'arena>>>,
     /// Track class inheritance for circular dependency detection
     class_parents: FxHashMap<String, String>,
     /// Track exported names to detect duplicates
     exported_names: std::collections::HashSet<String>,
     diagnostic_handler: Arc<dyn DiagnosticHandler>,
-    interner: &'a typedlua_parser::string_interner::StringInterner,
-    common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+    interner: &'a luanext_parser::string_interner::StringInterner,
+    common: &'a luanext_parser::string_interner::CommonIdentifiers,
     /// Arena allocator for type construction
     arena: &'arena bumpalo::Bump,
     /// Type relation cache for subtype checking
@@ -77,8 +77,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// ```
     pub fn new(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
-        interner: &'a typedlua_parser::string_interner::StringInterner,
-        common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        interner: &'a luanext_parser::string_interner::StringInterner,
+        common: &'a luanext_parser::string_interner::CommonIdentifiers,
         arena: &'arena bumpalo::Bump,
     ) -> Self {
         Self {
@@ -125,8 +125,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// ```
     pub fn new_with_di(
         container: &mut crate::DiContainer,
-        interner: &'a typedlua_parser::string_interner::StringInterner,
-        common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        interner: &'a luanext_parser::string_interner::StringInterner,
+        common: &'a luanext_parser::string_interner::CommonIdentifiers,
         arena: &'arena bumpalo::Bump,
     ) -> Self {
         let diagnostic_handler = container
@@ -171,8 +171,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// ```
     pub fn new_with_stdlib(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
-        interner: &'a typedlua_parser::string_interner::StringInterner,
-        common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        interner: &'a luanext_parser::string_interner::StringInterner,
+        common: &'a luanext_parser::string_interner::CommonIdentifiers,
         arena: &'arena bumpalo::Bump,
     ) -> Result<Self, String> {
         let mut checker = Self::new(diagnostic_handler, interner, common, arena);
@@ -221,8 +221,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Create a TypeChecker with module support for multi-module compilation
     pub fn new_with_module_support(
         diagnostic_handler: Arc<dyn DiagnosticHandler>,
-        interner: &'a typedlua_parser::string_interner::StringInterner,
-        common: &'a typedlua_parser::string_interner::CommonIdentifiers,
+        interner: &'a luanext_parser::string_interner::StringInterner,
+        common: &'a luanext_parser::string_interner::CommonIdentifiers,
         arena: &'arena bumpalo::Bump,
         registry: Arc<crate::module_resolver::ModuleRegistry>,
         module_id: crate::module_resolver::ModuleId,
@@ -936,7 +936,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                     Statement::Variable(var_decl) => {
                         // Extract variable name from pattern
                         match &var_decl.pattern {
-                            typedlua_parser::ast::pattern::Pattern::Identifier(name) => {
+                            luanext_parser::ast::pattern::Pattern::Identifier(name) => {
                                 Some(self.interner.resolve(name.node).to_string())
                             }
                             _ => None, // Complex patterns - skip for now
@@ -1637,10 +1637,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Check if a decorator expression resolves to a given name
     fn decorator_has_name(
         &self,
-        expr: &typedlua_parser::ast::statement::DecoratorExpression<'arena>,
+        expr: &luanext_parser::ast::statement::DecoratorExpression<'arena>,
         target: &str,
     ) -> bool {
-        use typedlua_parser::ast::statement::DecoratorExpression;
+        use luanext_parser::ast::statement::DecoratorExpression;
         match expr {
             DecoratorExpression::Identifier(name) => self.interner.resolve(name.node) == target,
             DecoratorExpression::Call { callee, .. } => {
@@ -1653,7 +1653,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Check decorators
     fn check_decorators(
         &mut self,
-        decorators: &[typedlua_parser::ast::statement::Decorator<'arena>],
+        decorators: &[luanext_parser::ast::statement::Decorator<'arena>],
     ) -> Result<(), TypeCheckError> {
         // Check if decorators are enabled
         if !decorators.is_empty() && !self.options.enable_decorators {
@@ -1668,12 +1668,12 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         for decorator in decorators.iter() {
             // Get decorator name for comparison
             let decorator_name = match &decorator.expression {
-                typedlua_parser::ast::statement::DecoratorExpression::Identifier(name) => {
+                luanext_parser::ast::statement::DecoratorExpression::Identifier(name) => {
                     self.interner.resolve(name.node).to_string()
                 }
-                typedlua_parser::ast::statement::DecoratorExpression::Call { callee, .. } => {
+                luanext_parser::ast::statement::DecoratorExpression::Call { callee, .. } => {
                     // For calls, use the callee name
-                    if let typedlua_parser::ast::statement::DecoratorExpression::Identifier(name) =
+                    if let luanext_parser::ast::statement::DecoratorExpression::Identifier(name) =
                         &**callee
                     {
                         self.interner.resolve(name.node).to_string()
@@ -1681,7 +1681,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                         continue; // Skip complex expressions
                     }
                 }
-                typedlua_parser::ast::statement::DecoratorExpression::Member { .. } => {
+                luanext_parser::ast::statement::DecoratorExpression::Member { .. } => {
                     continue; // Skip member expressions for duplicate checking
                 }
             };
@@ -1711,9 +1711,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     /// Check a decorator expression
     fn check_decorator_expression(
         &mut self,
-        expr: &typedlua_parser::ast::statement::DecoratorExpression<'arena>,
+        expr: &luanext_parser::ast::statement::DecoratorExpression<'arena>,
     ) -> Result<(), TypeCheckError> {
-        use typedlua_parser::ast::statement::DecoratorExpression;
+        use luanext_parser::ast::statement::DecoratorExpression;
 
         match expr {
             DecoratorExpression::Identifier(name) => {
@@ -1791,8 +1791,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             // Declare 'self' parameter (implicit in constructors)
             if let Some(class_ctx) = self.access_control.get_current_class() {
                 let self_type = Type::new(
-                    TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                        name: typedlua_parser::ast::Spanned::new(
+                    TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                        name: luanext_parser::ast::Spanned::new(
                             self.interner.intern(&class_ctx.name),
                             ctor.span,
                         ),
@@ -1909,8 +1909,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             if !method.is_static {
                 if let Some(class_ctx) = self.access_control.get_current_class() {
                     let self_type = Type::new(
-                        TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                            name: typedlua_parser::ast::Spanned::new(
+                        TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                            name: luanext_parser::ast::Spanned::new(
                                 self.interner.intern(&class_ctx.name),
                                 method.span,
                             ),
@@ -2003,8 +2003,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         if !getter.is_static {
             if let Some(class_ctx) = self.access_control.get_current_class() {
                 let self_type = Type::new(
-                    TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                        name: typedlua_parser::ast::Spanned::new(
+                    TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                        name: luanext_parser::ast::Spanned::new(
                             self.interner.intern(&class_ctx.name),
                             getter.span,
                         ),
@@ -2056,8 +2056,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         if !setter.is_static {
             if let Some(class_ctx) = self.access_control.get_current_class() {
                 let self_type = Type::new(
-                    TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                        name: typedlua_parser::ast::Spanned::new(
+                    TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                        name: luanext_parser::ast::Spanned::new(
                             self.interner.intern(&class_ctx.name),
                             setter.span,
                         ),
@@ -2180,8 +2180,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
         if let Some(class_ctx) = self.access_control.get_current_class() {
             let self_type = Type::new(
-                TypeKind::Reference(typedlua_parser::ast::types::TypeReference {
-                    name: typedlua_parser::ast::Spanned::new(
+                TypeKind::Reference(luanext_parser::ast::types::TypeReference {
+                    name: luanext_parser::ast::Spanned::new(
                         self.interner.intern(&class_ctx.name),
                         op.span,
                     ),
@@ -2345,7 +2345,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             TypeKind::TypeQuery(expr) => {
                 // typeof(expression) - Look up the type of the expression
                 // For identifiers, we can look them up directly in the type environment
-                use typedlua_parser::ast::expression::ExpressionKind;
+                use luanext_parser::ast::expression::ExpressionKind;
                 match &expr.kind {
                     ExpressionKind::Identifier(name_id) => {
                         let name = self.interner.resolve(*name_id);
@@ -2435,7 +2435,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                 }
             }
             TypeKind::Object(obj_type) => {
-                use typedlua_parser::ast::types::ObjectTypeMember;
+                use luanext_parser::ast::types::ObjectTypeMember;
                 let resolved_members: Vec<ObjectTypeMember<'arena>> = obj_type
                     .members
                     .iter()
@@ -2450,7 +2450,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                     })
                     .collect();
                 Type::new(
-                    TypeKind::Object(typedlua_parser::ast::types::ObjectType {
+                    TypeKind::Object(luanext_parser::ast::types::ObjectType {
                         members: self.arena.alloc_slice_fill_iter(resolved_members),
                         span: obj_type.span,
                     }),
@@ -2483,11 +2483,11 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             }
             TypeKind::Function(func_type) => {
                 // Recursively resolve parameter types and return type in function types
-                let resolved_params: Vec<typedlua_parser::ast::statement::Parameter<'arena>> =
+                let resolved_params: Vec<luanext_parser::ast::statement::Parameter<'arena>> =
                     func_type
                         .parameters
                         .iter()
-                        .map(|param| typedlua_parser::ast::statement::Parameter {
+                        .map(|param| luanext_parser::ast::statement::Parameter {
                             type_annotation: param
                                 .type_annotation
                                 .as_ref()
@@ -2499,7 +2499,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                 let resolved_return = self.deep_resolve_type(func_type.return_type);
 
                 Type::new(
-                    TypeKind::Function(typedlua_parser::ast::types::FunctionType {
+                    TypeKind::Function(luanext_parser::ast::types::FunctionType {
                         parameters: self.arena.alloc_slice_fill_iter(resolved_params),
                         return_type: self.arena.alloc(resolved_return),
                         ..func_type.clone()
@@ -2621,11 +2621,11 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
     /// Register minimal stdlib (fallback when full stdlib fails to parse)
     pub fn register_minimal_stdlib(&mut self) {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
-        use typedlua_parser::ast::types::*;
-        use typedlua_parser::ast::Spanned;
-        use typedlua_parser::span::Span;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
+        use luanext_parser::ast::types::*;
+        use luanext_parser::ast::Spanned;
+        use luanext_parser::span::Span;
 
         let span = Span::new(0, 0, 0, 0);
 
@@ -2891,7 +2891,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         &self,
         program: &Program<'arena>,
         _module_path: std::path::PathBuf,
-        interner: &typedlua_parser::string_interner::StringInterner,
+        interner: &luanext_parser::string_interner::StringInterner,
     ) -> FxHashMap<String, u64> {
         let mut hashes = FxHashMap::default();
 
@@ -3066,14 +3066,14 @@ mod tests {
     use super::*;
     use crate::cli::diagnostics::CollectingDiagnosticHandler;
     use bumpalo::Bump;
-    use typedlua_parser::lexer::Lexer;
-    use typedlua_parser::parser::Parser;
+    use luanext_parser::lexer::Lexer;
+    use luanext_parser::parser::Parser;
 
     fn type_check_source(source: &str) -> Result<(), TypeCheckError> {
         let arena = Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new(source, handler.clone(), &interner);
         let tokens = lexer.tokenize().expect("Lexing failed");
         let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);
@@ -3103,7 +3103,7 @@ mod tests {
         let arena = Bump::new();
         let handler = Arc::new(CollectingDiagnosticHandler::new());
         let (interner, common) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let mut lexer = Lexer::new(source, handler.clone(), &interner);
         let tokens = lexer.tokenize().expect("Lexing failed");
         let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);

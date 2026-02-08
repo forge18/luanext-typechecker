@@ -9,15 +9,15 @@ use crate::TypeCheckError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tracing::{debug, error, instrument, span, Level};
-use typedlua_parser::ast::expression::*;
-use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
-use typedlua_parser::ast::statement::{Block, OperatorKind, Statement};
-use typedlua_parser::ast::types::*;
-use typedlua_parser::prelude::{
+use luanext_parser::ast::expression::*;
+use luanext_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
+use luanext_parser::ast::statement::{Block, OperatorKind, Statement};
+use luanext_parser::ast::types::*;
+use luanext_parser::prelude::{
     Argument, MatchArm, MatchArmBody, MatchExpression, PropertySignature,
 };
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::span::Span;
+use luanext_parser::string_interner::StringInterner;
 
 /// Represents a variable binding from a pattern
 #[derive(Debug, Clone)]
@@ -678,7 +678,7 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                         // Return a Reference type to the class, preserving type arguments
                         Ok(Type::new(
                             TypeKind::Reference(TypeReference {
-                                name: typedlua_parser::ast::Spanned::new(*name, span),
+                                name: luanext_parser::ast::Spanned::new(*name, span),
                                 type_arguments: *type_args,
                                 span,
                             }),
@@ -1683,7 +1683,7 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
     /// Validate that all alternatives in an or-pattern bind the same variables with compatible types
     fn validate_or_pattern_bindings(
         &self,
-        or_pattern: &typedlua_parser::ast::pattern::OrPattern<'arena>,
+        or_pattern: &luanext_parser::ast::pattern::OrPattern<'arena>,
         expected_type: &Type<'arena>,
     ) -> Result<PatternBindings<'arena>, TypeCheckError> {
         use rustc_hash::FxHashSet;
@@ -1816,8 +1816,8 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
     /// Array pattern subsumption
     fn array_pattern_subsumes(
         &self,
-        earlier: &typedlua_parser::ast::pattern::ArrayPattern,
-        later: &typedlua_parser::ast::pattern::ArrayPattern,
+        earlier: &luanext_parser::ast::pattern::ArrayPattern,
+        later: &luanext_parser::ast::pattern::ArrayPattern,
     ) -> bool {
         let earlier_elems = &earlier.elements;
         let later_elems = &later.elements;
@@ -1885,8 +1885,8 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
     /// Object pattern subsumption
     fn object_pattern_subsumes(
         &self,
-        earlier: &typedlua_parser::ast::pattern::ObjectPattern,
-        later: &typedlua_parser::ast::pattern::ObjectPattern,
+        earlier: &luanext_parser::ast::pattern::ObjectPattern,
+        later: &luanext_parser::ast::pattern::ObjectPattern,
     ) -> bool {
         let earlier_props = &earlier.properties;
         let later_props = &later.properties;
@@ -2309,14 +2309,14 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
                     }
                 }
                 Statement::For(for_stmt) => match *for_stmt {
-                    typedlua_parser::ast::statement::ForStatement::Numeric(numeric) => {
+                    luanext_parser::ast::statement::ForStatement::Numeric(numeric) => {
                         if let Some(body_type) =
                             self.infer_block_return_type_recursive(&numeric.body)?
                         {
                             return_types.push(body_type);
                         }
                     }
-                    typedlua_parser::ast::statement::ForStatement::Generic(ref generic) => {
+                    luanext_parser::ast::statement::ForStatement::Generic(ref generic) => {
                         if let Some(body_type) =
                             self.infer_block_return_type_recursive(&generic.body)?
                         {

@@ -1,9 +1,9 @@
 use crate::helpers::type_utilities::{
     is_boolean_type, operator_kind_name, type_to_string, widen_type,
 };
-use typedlua_parser::ast::expression::OperatorKind;
-use typedlua_parser::ast::types::{Literal, PrimitiveType, Type, TypeKind};
-use typedlua_parser::span::Span;
+use luanext_parser::ast::expression::OperatorKind;
+use luanext_parser::ast::types::{Literal, PrimitiveType, Type, TypeKind};
+use luanext_parser::span::Span;
 
 fn default_span() -> Span {
     Span::new(0, 0, 0, 0)

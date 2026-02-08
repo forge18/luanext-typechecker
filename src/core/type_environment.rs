@@ -1,8 +1,8 @@
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
-use typedlua_parser::ast::statement::{ConstructorParameter, TypeParameter};
-use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-use typedlua_parser::span::Span;
+use luanext_parser::ast::statement::{ConstructorParameter, TypeParameter};
+use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+use luanext_parser::span::Span;
 
 /// A generic type alias with type parameters
 #[derive(Debug, Clone)]
@@ -534,8 +534,8 @@ impl<'arena> TypeEnvironment<'arena> {
         name: &str,
         type_args: &[Type<'arena>],
         span: Span,
-        interner: &typedlua_parser::string_interner::StringInterner,
-        common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
+        interner: &luanext_parser::string_interner::StringInterner,
+        common_ids: &luanext_parser::string_interner::CommonIdentifiers,
     ) -> Result<Type<'arena>, String> {
         let cache_key = UtilityTypeCacheKey {
             name: name.to_string(),
@@ -707,8 +707,8 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         // Create a proper TypeParameter with StringId
-        use typedlua_parser::ast::Spanned;
-        use typedlua_parser::string_interner::StringInterner;
+        use luanext_parser::ast::Spanned;
+        use luanext_parser::string_interner::StringInterner;
 
         let interner = StringInterner::new();
         let t_id = interner.get_or_intern("T");

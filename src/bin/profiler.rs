@@ -1,9 +1,9 @@
 use bumpalo::Bump;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use typedlua_parser::lexer::Lexer;
-use typedlua_parser::parser::Parser;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::lexer::Lexer;
+use luanext_parser::parser::Parser;
+use luanext_parser::string_interner::StringInterner;
 
 use typedlua_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
 

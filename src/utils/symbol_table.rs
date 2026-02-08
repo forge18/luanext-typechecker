@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use typedlua_parser::ast::types::Type;
-use typedlua_parser::span::Span;
+use luanext_parser::ast::types::Type;
+use luanext_parser::span::Span;
 
 /// Kind of symbol (variable, function, class, etc.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,7 +220,7 @@ pub struct SerializableSymbolTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
+    use luanext_parser::ast::types::{PrimitiveType, TypeKind};
 
     fn make_test_type() -> Type<'static> {
         Type::new(

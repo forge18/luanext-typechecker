@@ -1,10 +1,10 @@
 //! Inference phase: Statement and expression type checking
 
 use crate::TypeCheckError;
-use typedlua_parser::ast::statement::{
+use luanext_parser::ast::statement::{
     ForStatement, IfStatement, RepeatStatement, ReturnStatement, WhileStatement,
 };
-use typedlua_parser::span::Span;
+use luanext_parser::span::Span;
 
 /// Check that a rethrow statement appears in a valid context (inside a catch block).
 ///
@@ -118,7 +118,7 @@ pub fn check_repeat_statement(_repeat_stmt: &RepeatStatement) -> Result<(), Type
 /// The caller should then check the return expression type matches the function return type.
 pub fn check_return_statement(
     _return_stmt: &ReturnStatement,
-    current_function_return_type: Option<&typedlua_parser::ast::types::Type>,
+    current_function_return_type: Option<&luanext_parser::ast::types::Type>,
     span: Span,
 ) -> Result<(), TypeCheckError> {
     // Validate we're inside a function
@@ -136,7 +136,7 @@ pub fn check_return_statement(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::span::Span;
+    use luanext_parser::span::Span;
 
     #[test]
     fn test_check_rethrow_inside_catch() {
@@ -157,14 +157,14 @@ mod tests {
     #[test]
     fn test_check_return_inside_function() {
         let span = Span::new(0, 10, 0, 10);
-        let return_type = typedlua_parser::ast::types::Type::new(
-            typedlua_parser::ast::types::TypeKind::Primitive(
-                typedlua_parser::ast::types::PrimitiveType::Number,
+        let return_type = luanext_parser::ast::types::Type::new(
+            luanext_parser::ast::types::TypeKind::Primitive(
+                luanext_parser::ast::types::PrimitiveType::Number,
             ),
             span,
         );
         let result = check_return_statement(
-            &typedlua_parser::ast::statement::ReturnStatement { values: &[], span },
+            &luanext_parser::ast::statement::ReturnStatement { values: &[], span },
             Some(&return_type),
             span,
         );
@@ -175,7 +175,7 @@ mod tests {
     fn test_check_return_outside_function() {
         let span = Span::new(0, 10, 0, 10);
         let result = check_return_statement(
-            &typedlua_parser::ast::statement::ReturnStatement { values: &[], span },
+            &luanext_parser::ast::statement::ReturnStatement { values: &[], span },
             None,
             span,
         );
@@ -185,16 +185,16 @@ mod tests {
     #[test]
     fn test_check_if_statement() {
         let span = Span::new(0, 10, 0, 10);
-        let if_stmt = typedlua_parser::ast::statement::IfStatement {
-            condition: typedlua_parser::ast::expression::Expression {
-                kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                    typedlua_parser::ast::expression::Literal::Boolean(true),
+        let if_stmt = luanext_parser::ast::statement::IfStatement {
+            condition: luanext_parser::ast::expression::Expression {
+                kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                    luanext_parser::ast::expression::Literal::Boolean(true),
                 ),
                 span,
                 annotated_type: None,
                 receiver_class: None,
             },
-            then_block: typedlua_parser::ast::statement::Block {
+            then_block: luanext_parser::ast::statement::Block {
                 statements: &[],
                 span,
             },
@@ -209,16 +209,16 @@ mod tests {
     #[test]
     fn test_check_while_statement() {
         let span = Span::new(0, 10, 0, 10);
-        let while_stmt = typedlua_parser::ast::statement::WhileStatement {
-            condition: typedlua_parser::ast::expression::Expression {
-                kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                    typedlua_parser::ast::expression::Literal::Boolean(true),
+        let while_stmt = luanext_parser::ast::statement::WhileStatement {
+            condition: luanext_parser::ast::expression::Expression {
+                kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                    luanext_parser::ast::expression::Literal::Boolean(true),
                 ),
                 span,
                 annotated_type: None,
                 receiver_class: None,
             },
-            body: typedlua_parser::ast::statement::Block {
+            body: luanext_parser::ast::statement::Block {
                 statements: &[],
                 span,
             },
@@ -232,30 +232,30 @@ mod tests {
     fn test_check_for_statement() {
         let arena = bumpalo::Bump::new();
         let span = Span::new(0, 10, 0, 10);
-        let for_stmt = typedlua_parser::ast::statement::ForStatement::Numeric(&*arena.alloc(
-            typedlua_parser::ast::statement::ForNumeric {
-                variable: typedlua_parser::ast::Spanned::new(
-                    typedlua_parser::string_interner::StringId::from_u32(0),
+        let for_stmt = luanext_parser::ast::statement::ForStatement::Numeric(&*arena.alloc(
+            luanext_parser::ast::statement::ForNumeric {
+                variable: luanext_parser::ast::Spanned::new(
+                    luanext_parser::string_interner::StringId::from_u32(0),
                     span,
                 ),
-                start: typedlua_parser::ast::expression::Expression {
-                    kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                        typedlua_parser::ast::expression::Literal::Number(1.0),
+                start: luanext_parser::ast::expression::Expression {
+                    kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                        luanext_parser::ast::expression::Literal::Number(1.0),
                     ),
                     span,
                     annotated_type: None,
                     receiver_class: None,
                 },
-                end: typedlua_parser::ast::expression::Expression {
-                    kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                        typedlua_parser::ast::expression::Literal::Number(10.0),
+                end: luanext_parser::ast::expression::Expression {
+                    kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                        luanext_parser::ast::expression::Literal::Number(10.0),
                     ),
                     span,
                     annotated_type: None,
                     receiver_class: None,
                 },
                 step: None,
-                body: typedlua_parser::ast::statement::Block {
+                body: luanext_parser::ast::statement::Block {
                     statements: &[],
                     span,
                 },
@@ -269,14 +269,14 @@ mod tests {
     #[test]
     fn test_check_repeat_statement() {
         let span = Span::new(0, 10, 0, 10);
-        let repeat_stmt = typedlua_parser::ast::statement::RepeatStatement {
-            body: typedlua_parser::ast::statement::Block {
+        let repeat_stmt = luanext_parser::ast::statement::RepeatStatement {
+            body: luanext_parser::ast::statement::Block {
                 statements: &[],
                 span,
             },
-            until: typedlua_parser::ast::expression::Expression {
-                kind: typedlua_parser::ast::expression::ExpressionKind::Literal(
-                    typedlua_parser::ast::expression::Literal::Boolean(true),
+            until: luanext_parser::ast::expression::Expression {
+                kind: luanext_parser::ast::expression::ExpressionKind::Literal(
+                    luanext_parser::ast::expression::Literal::Boolean(true),
                 ),
                 span,
                 annotated_type: None,

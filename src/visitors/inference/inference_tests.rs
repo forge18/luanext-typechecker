@@ -7,12 +7,12 @@ mod tests {
     use crate::NarrowingContext;
     use bumpalo::Bump;
     use std::sync::Arc;
-    use typedlua_parser::ast::expression::*;
-    use typedlua_parser::ast::types::*;
-    use typedlua_parser::ast::Ident;
-    use typedlua_parser::prelude::*;
-    use typedlua_parser::span::Span;
-    use typedlua_parser::string_interner::StringInterner;
+    use luanext_parser::ast::expression::*;
+    use luanext_parser::ast::types::*;
+    use luanext_parser::ast::Ident;
+    use luanext_parser::prelude::*;
+    use luanext_parser::span::Span;
+    use luanext_parser::string_interner::StringInterner;
 
     fn create_test_inferrer<'a, 'arena>(
         arena: &'arena Bump,
@@ -1694,7 +1694,7 @@ mod tests {
             annotated_type: None,
             receiver_class: None,
         });
-        let member = typedlua_parser::ast::Spanned::new(interner.intern("prop"), Span::default());
+        let member = luanext_parser::ast::Spanned::new(interner.intern("prop"), Span::default());
 
         let expr = Expression {
             kind: ExpressionKind::OptionalMember(obj, member),

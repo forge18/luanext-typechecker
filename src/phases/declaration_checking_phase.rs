@@ -16,16 +16,16 @@ use crate::core::type_environment::TypeEnvironment;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
 use crate::TypeCheckError;
-use typedlua_parser::ast::expression::Literal;
-use typedlua_parser::ast::statement::{
+use luanext_parser::ast::expression::Literal;
+use luanext_parser::ast::statement::{
     AccessModifier, ClassDeclaration, ClassMember, EnumDeclaration, InterfaceDeclaration,
     InterfaceMember, TypeAliasDeclaration,
 };
-use typedlua_parser::ast::types::{
+use luanext_parser::ast::types::{
     ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind, TypeReference,
 };
-use typedlua_parser::prelude::EnumValue;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::prelude::EnumValue;
+use luanext_parser::string_interner::StringInterner;
 
 /// Check a type alias declaration.
 ///
@@ -516,7 +516,7 @@ pub fn register_class_symbol<'arena>(
     type_env: &mut TypeEnvironment<'arena>,
     class_type_params: &mut rustc_hash::FxHashMap<
         String,
-        Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>,
+        Vec<luanext_parser::ast::statement::TypeParameter<'arena>>,
     >,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, TypeCheckError> {
@@ -696,7 +696,7 @@ pub fn is_critical_member_error(error_message: &str) -> bool {
 ///
 /// Returns `Ok(())` if successful, or an error if registration fails.
 pub fn register_class_type_parameters(
-    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter]>,
+    type_params: Option<&[luanext_parser::ast::statement::TypeParameter]>,
     type_env: &mut crate::core::type_environment::TypeEnvironment,
     interner: &StringInterner,
 ) -> Result<(), crate::TypeCheckError> {
@@ -780,7 +780,7 @@ pub fn register_class_implements<'arena>(
 /// Returns `Ok(())` if successful, or an error if duplicate parameters are found
 /// or registration fails.
 pub fn register_function_type_parameters<'arena>(
-    type_params: Option<&[typedlua_parser::ast::statement::TypeParameter<'arena>]>,
+    type_params: Option<&[luanext_parser::ast::statement::TypeParameter<'arena>]>,
     type_env: &mut crate::core::type_environment::TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<(), crate::TypeCheckError> {
@@ -857,7 +857,7 @@ where
     F: Fn(&Type<'arena>, &[Type<'arena>], &str) -> Type<'arena>,
 {
     if let TypeKind::Object(obj) = &interface.kind {
-        use typedlua_parser::ast::statement::{MethodSignature, PropertySignature};
+        use luanext_parser::ast::statement::{MethodSignature, PropertySignature};
         let new_members: Vec<ObjectTypeMember<'arena>> = obj
             .members
             .iter()
@@ -873,7 +873,7 @@ where
                                 .type_annotation
                                 .as_ref()
                                 .map(|t| substitute_fn(t, type_args, interface_name));
-                            typedlua_parser::ast::statement::Parameter {
+                            luanext_parser::ast::statement::Parameter {
                                 type_annotation: new_type_ann,
                                 ..param.clone()
                             }

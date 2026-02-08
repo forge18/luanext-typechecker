@@ -4,10 +4,10 @@ mod tests {
         AccessControl, AccessControlVisitor, ClassContext, ClassMemberInfo, ClassMemberKind,
         TypeCheckVisitor,
     };
-    use typedlua_parser::ast::statement::AccessModifier;
-    use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
-    use typedlua_parser::prelude::OperatorKind;
-    use typedlua_parser::span::Span;
+    use luanext_parser::ast::statement::AccessModifier;
+    use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
+    use luanext_parser::prelude::OperatorKind;
+    use luanext_parser::span::Span;
 
     fn create_test_member(name: &str, access: AccessModifier) -> ClassMemberInfo<'static> {
         ClassMemberInfo {

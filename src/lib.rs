@@ -35,7 +35,7 @@ pub use utils::symbol_table::{
 };
 pub use visitors::{narrow_type_from_condition, NarrowingContext};
 
-use typedlua_parser::span::Span;
+use luanext_parser::span::Span;
 
 /// Type checker error
 #[derive(Debug, Clone)]

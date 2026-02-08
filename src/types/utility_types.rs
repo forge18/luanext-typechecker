@@ -1,12 +1,12 @@
 use rustc_hash::FxHashMap;
-use typedlua_parser::ast::expression::Literal;
-use typedlua_parser::ast::statement::{IndexKeyType, PropertySignature};
-use typedlua_parser::ast::types::{
+use luanext_parser::ast::expression::Literal;
+use luanext_parser::ast::statement::{IndexKeyType, PropertySignature};
+use luanext_parser::ast::types::{
     MappedType, MappedTypeModifier, ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind,
 };
-use typedlua_parser::ast::Ident;
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::ast::Ident;
+use luanext_parser::span::Span;
+use luanext_parser::string_interner::StringInterner;
 
 use crate::core::type_environment::TypeEnvironment;
 
@@ -17,7 +17,7 @@ pub fn apply_utility_type<'arena>(
     type_args: &[Type<'arena>],
     span: Span,
     interner: &StringInterner,
-    common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
+    common_ids: &luanext_parser::string_interner::CommonIdentifiers,
 ) -> Result<Type<'arena>, String> {
     match name {
         "Partial" => partial(arena, type_args, span),
@@ -189,7 +189,7 @@ fn record<'arena>(
     type_args: &[Type<'arena>],
     span: Span,
     _interner: &StringInterner,
-    common_ids: &typedlua_parser::string_interner::CommonIdentifiers,
+    common_ids: &luanext_parser::string_interner::CommonIdentifiers,
 ) -> Result<Type<'arena>, String> {
     if type_args.len() != 2 {
         return Err(format!(
@@ -232,8 +232,8 @@ fn record<'arena>(
     };
 
     // Create an object type with an index signature
-    use typedlua_parser::ast::statement::IndexSignature;
-    use typedlua_parser::ast::Ident;
+    use luanext_parser::ast::statement::IndexSignature;
+    use luanext_parser::ast::Ident;
 
     let key_id = common_ids.key;
     let index_sig = IndexSignature {
@@ -715,7 +715,7 @@ pub fn evaluate_keyof<'arena>(
 /// Also handles infer keyword: T extends Array<infer U> ? U : never
 pub fn evaluate_conditional_type<'arena>(
     arena: &'arena bumpalo::Bump,
-    conditional: &typedlua_parser::ast::types::ConditionalType<'arena>,
+    conditional: &luanext_parser::ast::types::ConditionalType<'arena>,
     type_env: &TypeEnvironment<'arena>,
 ) -> Result<Type<'arena>, String> {
     use crate::core::type_compat::TypeCompatibility;
@@ -747,7 +747,7 @@ pub fn evaluate_conditional_type<'arena>(
             .iter()
             .map(|member_type| {
                 // Create a new conditional for each union member
-                let member_conditional = typedlua_parser::ast::types::ConditionalType {
+                let member_conditional = luanext_parser::ast::types::ConditionalType {
                     check_type: arena.alloc(member_type.clone()),
                     extends_type: conditional.extends_type,
                     true_type: conditional.true_type,
@@ -1115,11 +1115,11 @@ fn is_assignable_to<'arena>(source: &Type<'arena>, target: &Type<'arena>) -> boo
 /// For example: `Hello ${T}` where T = "World" | "Rust" becomes "Hello World" | "Hello Rust"
 pub fn evaluate_template_literal_type<'arena>(
     arena: &'arena bumpalo::Bump,
-    template: &typedlua_parser::ast::types::TemplateLiteralType<'arena>,
+    template: &luanext_parser::ast::types::TemplateLiteralType<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, String> {
-    use typedlua_parser::ast::types::TemplateLiteralTypePart;
+    use luanext_parser::ast::types::TemplateLiteralTypePart;
 
     // Extract all interpolated types and get their possible values
     let mut part_expansions: Vec<Vec<String>> = Vec::new();
@@ -1249,7 +1249,7 @@ fn cartesian_product(vecs: &[Vec<String>]) -> Vec<String> {
 mod tests {
     use super::*;
     use bumpalo::Bump;
-    use typedlua_parser::ast::Ident;
+    use luanext_parser::ast::Ident;
 
     fn make_span() -> Span {
         Span::new(0, 0, 0, 0)
@@ -1259,13 +1259,13 @@ mod tests {
         arena: &'arena Bump,
         properties: Vec<(&str, Type<'arena>, bool, bool)>,
     ) -> Type<'arena> {
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         make_object_type_with_interner(arena, &interner, properties)
     }
 
     fn make_object_type_with_interner<'arena>(
         arena: &'arena Bump,
-        interner: &typedlua_parser::string_interner::StringInterner,
+        interner: &luanext_parser::string_interner::StringInterner,
         properties: Vec<(&str, Type<'arena>, bool, bool)>,
     ) -> Type<'arena> {
         let members: Vec<_> = properties
@@ -1415,7 +1415,7 @@ mod tests {
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = record(
             &arena,
             &[key_type, value_type],
@@ -1498,7 +1498,7 @@ mod tests {
 
     #[test]
     fn test_return_type() {
-        use typedlua_parser::ast::types::FunctionType;
+        use luanext_parser::ast::types::FunctionType;
 
         let arena = Bump::new();
         let func = Type::new(
@@ -1525,7 +1525,7 @@ mod tests {
     #[test]
     fn test_pick() {
         let arena = Bump::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
             &arena,
             &interner,
@@ -1579,7 +1579,7 @@ mod tests {
     #[test]
     fn test_pick_single_key() {
         let arena = Bump::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
             &arena,
             &interner,
@@ -1617,7 +1617,7 @@ mod tests {
     #[test]
     fn test_omit() {
         let arena = Bump::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
             &arena,
             &interner,
@@ -1662,7 +1662,7 @@ mod tests {
     #[test]
     fn test_omit_multiple_keys() {
         let arena = Bump::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let obj = make_object_type_with_interner(
             &arena,
             &interner,
@@ -1771,12 +1771,12 @@ mod tests {
 
     #[test]
     fn test_parameters() {
-        use typedlua_parser::ast::pattern::Pattern;
-        use typedlua_parser::ast::statement::Parameter;
-        use typedlua_parser::ast::types::FunctionType;
+        use luanext_parser::ast::pattern::Pattern;
+        use luanext_parser::ast::statement::Parameter;
+        use luanext_parser::ast::types::FunctionType;
 
         let arena = Bump::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let x_id = interner.intern("x");
         let y_id = interner.intern("y");
 
@@ -1848,7 +1848,7 @@ mod tests {
         );
 
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = apply_utility_type(
             &arena,
             "Partial",
@@ -1874,7 +1874,7 @@ mod tests {
         let arena = Bump::new();
         let obj = make_object_type(&arena, vec![]);
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = apply_utility_type(
             &arena,
             "UnknownType",
@@ -1938,7 +1938,7 @@ mod tests {
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = record(
             &arena,
             &[key_type, value_type],
@@ -1978,7 +1978,7 @@ mod tests {
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span());
 
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = record(
             &arena,
             &[key_type, value_type],
@@ -2003,7 +2003,7 @@ mod tests {
         let value_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
 
         let (interner, common_ids) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
         let result = record(
             &arena,
             &[key_type, value_type],

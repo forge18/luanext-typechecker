@@ -2,9 +2,9 @@
 /// This provides the scaffolding for how narrowing will be used during type checking
 use crate::visitors::{narrow_type_from_condition, NarrowingContext};
 use rustc_hash::FxHashMap;
-use typedlua_parser::ast::expression::Expression;
-use typedlua_parser::ast::types::Type;
-use typedlua_parser::string_interner::{StringId, StringInterner};
+use luanext_parser::ast::expression::Expression;
+use luanext_parser::ast::types::Type;
+use luanext_parser::string_interner::{StringId, StringInterner};
 
 /// Demonstration of how type narrowing integrates with if statement checking
 ///
@@ -47,11 +47,11 @@ impl IfStatementNarrowingExample {
 mod tests {
     use super::*;
     use bumpalo::Bump;
-    use typedlua_parser::ast::expression::{BinaryOp, ExpressionKind, Literal};
-    use typedlua_parser::ast::types::{PrimitiveType, TypeKind};
-    use typedlua_parser::ast::Spanned;
-    use typedlua_parser::span::Span;
-    use typedlua_parser::string_interner::StringId;
+    use luanext_parser::ast::expression::{BinaryOp, ExpressionKind, Literal};
+    use luanext_parser::ast::types::{PrimitiveType, TypeKind};
+    use luanext_parser::ast::Spanned;
+    use luanext_parser::span::Span;
+    use luanext_parser::string_interner::StringId;
 
     fn make_span() -> Span {
         Span::new(0, 0, 0, 0)
@@ -65,7 +65,7 @@ mod tests {
     fn test_if_statement_narrowing_example() {
         let arena = Bump::new();
         let (interner, _) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
 
         // Setup: x: string | nil
         let mut variable_types = FxHashMap::default();
@@ -129,7 +129,7 @@ mod tests {
     fn test_typeof_narrowing_example() {
         let arena = Bump::new();
         let (interner, _) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
 
         let mut variable_types = FxHashMap::default();
         let x_id = get_string_id("x", &interner);
@@ -155,7 +155,7 @@ mod tests {
                             ExpressionKind::Identifier(typeof_id),
                             make_span(),
                         )),
-                        arena.alloc_slice_fill_iter([typedlua_parser::ast::expression::Argument {
+                        arena.alloc_slice_fill_iter([luanext_parser::ast::expression::Argument {
                             value: Expression::new(ExpressionKind::Identifier(x_id), make_span()),
                             is_spread: false,
                             span: make_span(),
@@ -200,12 +200,12 @@ mod tests {
 
     #[test]
     fn test_type_guard_narrowing() {
-        use typedlua_parser::ast::types::{FunctionType, TypePredicate};
-        use typedlua_parser::ast::Ident;
+        use luanext_parser::ast::types::{FunctionType, TypePredicate};
+        use luanext_parser::ast::Ident;
 
         let arena = Bump::new();
         let (interner, _) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
 
         // Setup: x: string | number | nil
         let mut variable_types = FxHashMap::default();
@@ -256,7 +256,7 @@ mod tests {
                     ExpressionKind::Identifier(is_string_id),
                     make_span(),
                 )),
-                arena.alloc_slice_fill_iter([typedlua_parser::ast::expression::Argument {
+                arena.alloc_slice_fill_iter([luanext_parser::ast::expression::Argument {
                     value: Expression::new(ExpressionKind::Identifier(x_id), make_span()),
                     is_spread: false,
                     span: make_span(),
@@ -301,12 +301,12 @@ mod tests {
 
     #[test]
     fn test_instanceof_narrowing() {
-        use typedlua_parser::ast::expression::ExpressionKind;
-        use typedlua_parser::ast::types::TypeReference;
+        use luanext_parser::ast::expression::ExpressionKind;
+        use luanext_parser::ast::types::TypeReference;
 
         let arena = Bump::new();
         let (interner, _) =
-            typedlua_parser::string_interner::StringInterner::new_with_common_identifiers();
+            luanext_parser::string_interner::StringInterner::new_with_common_identifiers();
 
         let mut variable_types = FxHashMap::default();
         let pet_id = get_string_id("pet", &interner);

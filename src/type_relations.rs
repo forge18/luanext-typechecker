@@ -1,5 +1,5 @@
 use lru::LruCache;
-use typedlua_parser::ast::types::Type;
+use luanext_parser::ast::types::Type;
 
 /// Type relation cache for subtype checking
 ///
@@ -85,12 +85,12 @@ impl Default for TypeRelationCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::ast::types::{PrimitiveType, Type, TypeKind};
+    use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
 
     fn create_test_type(primitive: PrimitiveType) -> Type<'static> {
         Type {
             kind: TypeKind::Primitive(primitive),
-            span: typedlua_parser::span::Span::dummy(),
+            span: luanext_parser::span::Span::dummy(),
         }
     }
 

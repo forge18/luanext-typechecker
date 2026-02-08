@@ -1,7 +1,7 @@
 use crate::type_relations::TypeRelationCache;
 use std::collections::HashSet;
-use typedlua_parser::ast::expression::Literal;
-use typedlua_parser::ast::types::{
+use luanext_parser::ast::expression::Literal;
+use luanext_parser::ast::types::{
     FunctionType, ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind,
 };
 
@@ -325,7 +325,7 @@ impl TypeCompatibility {
 mod tests {
     use super::*;
     use bumpalo::Bump;
-    use typedlua_parser::span::Span;
+    use luanext_parser::span::Span;
 
     fn make_type(kind: TypeKind) -> Type {
         Type::new(kind, Span::new(0, 0, 0, 0))

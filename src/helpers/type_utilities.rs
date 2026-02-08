@@ -9,10 +9,10 @@
 #![allow(dead_code)] // Functions will be used during type_checker.rs refactoring
 
 use bumpalo::Bump;
-use typedlua_parser::ast::expression::*;
-use typedlua_parser::ast::statement::*;
-use typedlua_parser::ast::types::*;
-use typedlua_parser::span::Span;
+use luanext_parser::ast::expression::*;
+use luanext_parser::ast::statement::*;
+use luanext_parser::ast::types::*;
+use luanext_parser::span::Span;
 
 /// Widens literal types to their base primitive types.
 ///
@@ -216,7 +216,7 @@ fn add_type_to_union<'arena>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedlua_parser::span::Span;
+    use luanext_parser::span::Span;
 
     fn make_type<'arena>(kind: TypeKind<'arena>) -> Type<'arena> {
         Type::new(kind, Span::default())

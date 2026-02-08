@@ -19,13 +19,13 @@ use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, Clas
 use crate::TypeCheckError;
 use std::path::PathBuf;
 use std::sync::Arc;
-use typedlua_parser::ast::pattern::Pattern;
-use typedlua_parser::ast::statement::{ExportKind, ImportClause, ImportDeclaration, Statement};
-use typedlua_parser::ast::types::{ObjectTypeMember, PrimitiveType, Type, TypeKind};
-use typedlua_parser::ast::Program;
-use typedlua_parser::prelude::AccessModifier;
-use typedlua_parser::span::Span;
-use typedlua_parser::string_interner::StringInterner;
+use luanext_parser::ast::pattern::Pattern;
+use luanext_parser::ast::statement::{ExportKind, ImportClause, ImportDeclaration, Statement};
+use luanext_parser::ast::types::{ObjectTypeMember, PrimitiveType, Type, TypeKind};
+use luanext_parser::ast::Program;
+use luanext_parser::prelude::AccessModifier;
+use luanext_parser::span::Span;
+use luanext_parser::string_interner::StringInterner;
 
 /// Convert a `Symbol<'arena>` to `Symbol<'static>` for cross-module storage.
 ///
@@ -483,11 +483,11 @@ mod tests {
 
     #[test]
     fn test_extract_exports_empty() {
-        let program = typedlua_parser::ast::Program {
+        let program = luanext_parser::ast::Program {
             statements: &[],
             span: Span::new(0, 0, 0, 0),
         };
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let symbol_table = crate::utils::symbol_table::SymbolTable::new();
         let result = extract_exports(&program, &symbol_table, &interner, None, None, None);
         assert!(result.named.is_empty());
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn test_extract_exports_with_variable() {
         let span = Span::new(0, 10, 0, 10);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
 
         let name_id = interner.intern("myVar");
@@ -509,7 +509,7 @@ mod tests {
         );
         symbol_table.declare(symbol).unwrap();
 
-        let program = typedlua_parser::ast::Program {
+        let program = luanext_parser::ast::Program {
             statements: &[],
             span,
         };
@@ -525,13 +525,13 @@ mod tests {
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut module_dependencies: Vec<PathBuf> = Vec::new();
 
         let name_id = interner.intern("MyModule");
-        let import = typedlua_parser::ast::statement::ImportDeclaration {
-            clause: typedlua_parser::ast::statement::ImportClause::Default(
-                typedlua_parser::ast::Spanned::new(name_id, span),
+        let import = luanext_parser::ast::statement::ImportDeclaration {
+            clause: luanext_parser::ast::statement::ImportClause::Default(
+                luanext_parser::ast::Spanned::new(name_id, span),
             ),
             source: "./my_module.lua".to_string(),
             span,
@@ -585,14 +585,14 @@ mod tests {
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut module_dependencies: Vec<PathBuf> = Vec::new();
 
-        let import = typedlua_parser::ast::statement::ImportDeclaration {
-            clause: typedlua_parser::ast::statement::ImportClause::Named(
-                arena.alloc_slice_fill_iter([typedlua_parser::ast::statement::ImportSpecifier {
-                    imported: typedlua_parser::ast::Spanned::new(interner.intern("foo"), span),
-                    local: Some(typedlua_parser::ast::Spanned::new(
+        let import = luanext_parser::ast::statement::ImportDeclaration {
+            clause: luanext_parser::ast::statement::ImportClause::Named(
+                arena.alloc_slice_fill_iter([luanext_parser::ast::statement::ImportSpecifier {
+                    imported: luanext_parser::ast::Spanned::new(interner.intern("foo"), span),
+                    local: Some(luanext_parser::ast::Spanned::new(
                         interner.intern("foo"),
                         span,
                     )),
@@ -625,12 +625,12 @@ mod tests {
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut module_dependencies: Vec<PathBuf> = Vec::new();
 
-        let import = typedlua_parser::ast::statement::ImportDeclaration {
-            clause: typedlua_parser::ast::statement::ImportClause::Namespace(
-                typedlua_parser::ast::Spanned::new(interner.intern("mylib"), span),
+        let import = luanext_parser::ast::statement::ImportDeclaration {
+            clause: luanext_parser::ast::statement::ImportClause::Namespace(
+                luanext_parser::ast::Spanned::new(interner.intern("mylib"), span),
             ),
             source: "./my_module.lua".to_string(),
             span,
@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn test_extract_declaration_export_function() {
         let span = Span::new(0, 10, 0, 10);
-        let interner = typedlua_parser::string_interner::StringInterner::new();
+        let interner = luanext_parser::string_interner::StringInterner::new();
         let mut symbol_table = crate::utils::symbol_table::SymbolTable::new();
 
         let func_name_id = interner.intern("myFunc");
@@ -666,7 +666,7 @@ mod tests {
         );
         symbol_table.declare(symbol).unwrap();
 
-        let program = typedlua_parser::ast::Program {
+        let program = luanext_parser::ast::Program {
             statements: &[],
             span,
         };
