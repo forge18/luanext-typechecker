@@ -44,7 +44,7 @@ impl DiContainer {
     /// # Example
     ///
     /// ```rust
-    /// use typedlua_typechecker::di::{DiContainer, ServiceLifetime};
+    /// use luanext_typechecker::di::{DiContainer, ServiceLifetime};
     ///
     /// let mut container = DiContainer::new();
     /// container.register(|_| String::from("Hello"), ServiceLifetime::Singleton);
@@ -75,7 +75,7 @@ impl DiContainer {
     /// # Example
     ///
     /// ```rust
-    /// use typedlua_typechecker::di::{DiContainer, ServiceLifetime};
+    /// use luanext_typechecker::di::{DiContainer, ServiceLifetime};
     ///
     /// let mut container = DiContainer::new();
     /// container.register(|_| 42i32, ServiceLifetime::Singleton);

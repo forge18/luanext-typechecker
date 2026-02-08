@@ -5,7 +5,7 @@ use luanext_parser::lexer::Lexer;
 use luanext_parser::parser::Parser;
 use luanext_parser::string_interner::StringInterner;
 
-use typedlua_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
+use luanext_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
 
 #[derive(Debug, Clone)]
 struct ProfilingData {

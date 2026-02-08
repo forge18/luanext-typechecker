@@ -2,11 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
-use typedlua_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
-use typedlua_typechecker::incremental::{
+use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
+use luanext_typechecker::incremental::{
     compute_invalidated_decls, CompilationCache, DependencyGraph,
 };
-use typedlua_typechecker::{DeclarationId, TypeCheckError, TypeChecker};
+use luanext_typechecker::{DeclarationId, TypeCheckError, TypeChecker};
 
 fn compute_hashes(
     source: &str,

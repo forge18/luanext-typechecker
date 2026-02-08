@@ -4,7 +4,7 @@ use typedlua_parser::lexer::Lexer;
 use typedlua_parser::parser::Parser;
 use typedlua_parser::string_interner::StringInterner;
 
-use typedlua_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
+use luanext_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
 
 fn parse_and_check(code: &str) {
     let handler = Arc::new(CollectingDiagnosticHandler::new());

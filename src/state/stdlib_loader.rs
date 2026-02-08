@@ -45,8 +45,8 @@ use luanext_parser::string_interner::{CommonIdentifiers, StringInterner};
 /// # Example
 ///
 /// ```rust,ignore
-/// use typedlua_typechecker::state::stdlib_loader;
-/// use typedlua_typechecker::config::LuaVersion;
+/// use luanext_typechecker::state::stdlib_loader;
+/// use luanext_typechecker::config::LuaVersion;
 ///
 /// let (interner, common) = StringInterner::new_with_common_identifiers();
 /// let programs = stdlib_loader::parse_stdlib_files(
