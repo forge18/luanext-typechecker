@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use luanext_parser::span::Span;
+use std::sync::Mutex;
 
 // Bridge implementation for parser crate compatibility
 // This allows core's diagnostic handlers to be used with the parser crate's Lexer and Parser

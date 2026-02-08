@@ -1,9 +1,9 @@
 use bumpalo::Bump;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use luanext_parser::lexer::Lexer;
 use luanext_parser::parser::Parser;
 use luanext_parser::string_interner::StringInterner;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use luanext_typechecker::{cli::diagnostics::CollectingDiagnosticHandler, TypeChecker};
 

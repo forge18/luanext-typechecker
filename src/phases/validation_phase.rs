@@ -17,9 +17,6 @@ use crate::types::generics;
 use crate::utils::symbol_table::SymbolTable;
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberKind};
 use crate::TypeCheckError;
-use rustc_hash::FxHashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 use luanext_parser::ast::expression::Expression;
 use luanext_parser::ast::statement::{
     ClassMember, Decorator, DecoratorExpression, IndexSignature, MethodDeclaration, TypeParameter,
@@ -28,6 +25,9 @@ use luanext_parser::ast::types::{ObjectTypeMember, Type};
 use luanext_parser::prelude::ClassDeclaration;
 use luanext_parser::span::Span;
 use luanext_parser::string_interner::StringInterner;
+use rustc_hash::FxHashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 /// Validate interface members for duplicate property names.
 ///

@@ -7,11 +7,11 @@
 use crate::cli::config::LuaVersion;
 use crate::cli::diagnostics::CollectingDiagnosticHandler;
 use bumpalo::Bump;
-use std::sync::Arc;
 use luanext_parser::ast::Program;
 use luanext_parser::lexer::Lexer;
 use luanext_parser::parser::Parser;
 use luanext_parser::string_interner::{CommonIdentifiers, StringInterner};
+use std::sync::Arc;
 
 /// Parses the standard library definition files for the specified Lua version.
 ///

@@ -2,9 +2,9 @@ use crate::cli::diagnostics::DiagnosticHandler;
 use crate::core::type_environment::TypeEnvironment;
 use crate::utils::symbol_table::SymbolTable;
 use crate::visitors::{AccessControl, TypeNarrower};
-use std::sync::Arc;
 use luanext_parser::string_interner::CommonIdentifiers;
 use luanext_parser::string_interner::StringInterner;
+use std::sync::Arc;
 
 pub trait TypeCheckContext<'arena> {
     fn symbol_table(&mut self) -> &mut SymbolTable<'arena>;

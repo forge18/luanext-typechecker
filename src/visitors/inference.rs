@@ -6,9 +6,6 @@ use crate::core::type_environment::TypeEnvironment;
 use crate::types::generics::instantiate_type;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
-use rustc_hash::FxHashMap;
-use std::sync::Arc;
-use tracing::{debug, error, instrument, span, Level};
 use luanext_parser::ast::expression::*;
 use luanext_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
 use luanext_parser::ast::statement::{Block, OperatorKind, Statement};
@@ -18,6 +15,9 @@ use luanext_parser::prelude::{
 };
 use luanext_parser::span::Span;
 use luanext_parser::string_interner::StringInterner;
+use rustc_hash::FxHashMap;
+use std::sync::Arc;
+use tracing::{debug, error, instrument, span, Level};
 
 /// Represents a variable binding from a pattern
 #[derive(Debug, Clone)]
@@ -390,7 +390,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 }
 
                 let result_type = if union_types.len() == 1 {
-                    union_types.into_iter().next().unwrap()
+                    union_types
+                        .into_iter()
+                        .next()
+                        .expect("length checked above")
                 } else {
                     let types = self.arena.alloc_slice_fill_iter(union_types.into_iter());
                     Type::new(TypeKind::Union(types), span)
@@ -1282,7 +1285,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
         }
 
         let result_type = if union_types.len() == 1 {
-            union_types.into_iter().next().unwrap()
+            union_types
+                .into_iter()
+                .next()
+                .expect("length checked above")
         } else {
             let types = self.arena.alloc_slice_fill_iter(union_types.into_iter());
             Type::new(TypeKind::Union(types), match_expr.span)

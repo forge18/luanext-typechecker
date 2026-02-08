@@ -1,9 +1,9 @@
 use crate::type_relations::TypeRelationCache;
-use std::collections::HashSet;
 use luanext_parser::ast::expression::Literal;
 use luanext_parser::ast::types::{
     FunctionType, ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind,
 };
+use std::collections::HashSet;
 
 fn type_ptr(ty: &Type) -> usize {
     ty as *const Type as usize

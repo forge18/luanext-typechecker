@@ -1,7 +1,7 @@
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::statement::TypeParameter;
 use luanext_parser::ast::types::{Type, TypeKind, TypeReference};
 use luanext_parser::string_interner::StringId;
+use rustc_hash::FxHashMap;
 
 #[cfg(test)]
 use luanext_parser::span::Span;

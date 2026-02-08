@@ -1,10 +1,10 @@
 use super::TypeCheckVisitor;
 use crate::TypeCheckError;
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::statement::{AccessModifier, Parameter};
 use luanext_parser::ast::types::Type;
 use luanext_parser::prelude::OperatorKind;
 use luanext_parser::span::Span;
+use rustc_hash::FxHashMap;
 
 /// Information about a class member for access checking
 #[derive(Clone)]

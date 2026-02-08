@@ -1,4 +1,3 @@
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::expression::Literal;
 use luanext_parser::ast::statement::{IndexKeyType, PropertySignature};
 use luanext_parser::ast::types::{
@@ -7,6 +6,7 @@ use luanext_parser::ast::types::{
 use luanext_parser::ast::Ident;
 use luanext_parser::span::Span;
 use luanext_parser::string_interner::StringInterner;
+use rustc_hash::FxHashMap;
 
 use crate::core::type_environment::TypeEnvironment;
 
@@ -696,7 +696,7 @@ pub fn evaluate_keyof<'arena>(
                     typ.span,
                 ))
             } else if keys.len() == 1 {
-                Ok(keys.into_iter().next().unwrap())
+                Ok(keys.into_iter().next().expect("length checked above"))
             } else {
                 Ok(Type::new(
                     TypeKind::Union(arena.alloc_slice_fill_iter(keys)),
@@ -762,7 +762,10 @@ pub fn evaluate_conditional_type<'arena>(
         // If all results are the same, return just one
         // Otherwise, return a union
         if result_types.len() == 1 {
-            return Ok(result_types.into_iter().next().unwrap());
+            return Ok(result_types
+                .into_iter()
+                .next()
+                .expect("length checked above"));
         }
 
         // Check if all types are the same (simplified check)
@@ -771,7 +774,10 @@ pub fn evaluate_conditional_type<'arena>(
             .all(|w| types_structurally_equal(&w[0], &w[1]));
 
         if all_same {
-            return Ok(result_types.into_iter().next().unwrap());
+            return Ok(result_types
+                .into_iter()
+                .next()
+                .expect("length checked above"));
         }
 
         return Ok(Type::new(

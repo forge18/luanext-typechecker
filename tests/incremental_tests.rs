@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 use luanext_parser::lexer::Lexer;
 use luanext_parser::parser::Parser;
 use luanext_typechecker::cli::diagnostics::CollectingDiagnosticHandler;
@@ -7,6 +5,8 @@ use luanext_typechecker::incremental::{
     compute_invalidated_decls, CompilationCache, DependencyGraph,
 };
 use luanext_typechecker::{DeclarationId, TypeCheckError, TypeChecker};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 fn compute_hashes(
     source: &str,

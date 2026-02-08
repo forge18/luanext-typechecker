@@ -1,7 +1,7 @@
-use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
 use luanext_parser::ast::types::Type;
 use luanext_parser::span::Span;
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 /// Kind of symbol (variable, function, class, etc.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -214,8 +214,9 @@ pub struct SerializableSymbolTable {
 }
 
 // NOTE: to_serializable/from_serializable removed during arena migration.
-// Arena-allocated types (Type<'arena>) cannot be converted to 'static.
-// A proper serialization strategy will be needed for caching.
+// Export type serialization is now handled by SerializableModuleExports in
+// luanext_core::cache::serializable_types, which converts Type<'arena> to
+// owned SerializableType for cache persistence.
 
 #[cfg(test)]
 mod tests {

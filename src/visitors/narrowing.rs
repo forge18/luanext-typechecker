@@ -1,7 +1,7 @@
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::expression::{BinaryOp, Expression, ExpressionKind, Literal, UnaryOp};
 use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
 use luanext_parser::string_interner::StringId;
+use rustc_hash::FxHashMap;
 
 /// Trait for type narrowing operations
 ///

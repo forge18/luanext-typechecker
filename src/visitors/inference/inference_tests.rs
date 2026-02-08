@@ -6,13 +6,13 @@ mod tests {
     use crate::visitors::{AccessControl, TypeCheckVisitor, TypeInferenceVisitor, TypeInferrer};
     use crate::NarrowingContext;
     use bumpalo::Bump;
-    use std::sync::Arc;
     use luanext_parser::ast::expression::*;
     use luanext_parser::ast::types::*;
     use luanext_parser::ast::Ident;
     use luanext_parser::prelude::*;
     use luanext_parser::span::Span;
     use luanext_parser::string_interner::StringInterner;
+    use std::sync::Arc;
 
     fn create_test_inferrer<'a, 'arena>(
         arena: &'arena Bump,

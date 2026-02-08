@@ -13,15 +13,15 @@ use crate::visitors::{
     NarrowingVisitor, TypeInferenceVisitor, TypeInferrer, TypeNarrower,
 };
 use crate::TypeCheckError;
-use rustc_hash::FxHashMap;
-use std::sync::Arc;
-use tracing::{debug, error, info, instrument, span, Level};
 use luanext_parser::ast::expression::*;
 use luanext_parser::ast::pattern::Pattern;
 use luanext_parser::ast::statement::*;
 use luanext_parser::ast::types::*;
 use luanext_parser::ast::Program;
 use luanext_parser::span::Span;
+use rustc_hash::FxHashMap;
+use std::sync::Arc;
+use tracing::{debug, error, info, instrument, span, Level};
 
 /// Type checker for TypedLua programs
 pub struct TypeChecker<'a, 'arena> {
@@ -1379,10 +1379,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             }
 
             // Register the class constructor for parent argument validation
-            self.type_env.register_class_constructor(
-                class_name.clone(),
-                class_decl.primary_constructor.unwrap(),
-            );
+            self.type_env
+                .register_class_constructor(class_name.clone(), primary_params);
         }
 
         // Validate parent constructor arguments if present

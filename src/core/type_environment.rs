@@ -1,8 +1,8 @@
-use rustc_hash::FxHashMap;
-use std::sync::Arc;
 use luanext_parser::ast::statement::{ConstructorParameter, TypeParameter};
 use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
 use luanext_parser::span::Span;
+use rustc_hash::FxHashMap;
+use std::sync::Arc;
 
 /// A generic type alias with type parameters
 #[derive(Debug, Clone)]

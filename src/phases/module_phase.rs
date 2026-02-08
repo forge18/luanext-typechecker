@@ -17,8 +17,6 @@ use crate::module_resolver::{
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
 use crate::TypeCheckError;
-use std::path::PathBuf;
-use std::sync::Arc;
 use luanext_parser::ast::pattern::Pattern;
 use luanext_parser::ast::statement::{ExportKind, ImportClause, ImportDeclaration, Statement};
 use luanext_parser::ast::types::{ObjectTypeMember, PrimitiveType, Type, TypeKind};
@@ -26,6 +24,8 @@ use luanext_parser::ast::Program;
 use luanext_parser::prelude::AccessModifier;
 use luanext_parser::span::Span;
 use luanext_parser::string_interner::StringInterner;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Convert a `Symbol<'arena>` to `Symbol<'static>` for cross-module storage.
 ///

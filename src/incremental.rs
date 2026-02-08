@@ -3,15 +3,15 @@
 //! This module implements declaration-level incremental type checking. The key insight
 //! is that body-only changes don't invalidate callers - only signature changes do.
 
-use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
 use luanext_parser::ast::pattern::Pattern;
 use luanext_parser::ast::statement::*;
 use luanext_parser::ast::types::*;
 use luanext_parser::prelude::EnumValue;
 use luanext_parser::string_interner::StringInterner;
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeclarationId {

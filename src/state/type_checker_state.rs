@@ -8,9 +8,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::statement::TypeParameter;
 use luanext_parser::string_interner::{CommonIdentifiers, StringInterner};
+use rustc_hash::FxHashMap;
 
 use crate::cli::config::CompilerOptions;
 use crate::cli::diagnostics::DiagnosticHandler;
@@ -245,8 +245,8 @@ impl<'a, 'arena> TypeCheckerState<'a, 'arena> {
 mod tests {
     use super::*;
     use crate::cli::diagnostics::CollectingDiagnosticHandler;
-    use std::sync::Arc;
     use luanext_parser::string_interner::StringInterner;
+    use std::sync::Arc;
 
     fn create_test_state() -> TypeCheckerState<'static, 'static> {
         let handler = Arc::new(CollectingDiagnosticHandler::new());

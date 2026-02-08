@@ -1,10 +1,10 @@
 /// Integration module for type narrowing with the type checker
 /// This provides the scaffolding for how narrowing will be used during type checking
 use crate::visitors::{narrow_type_from_condition, NarrowingContext};
-use rustc_hash::FxHashMap;
 use luanext_parser::ast::expression::Expression;
 use luanext_parser::ast::types::Type;
 use luanext_parser::string_interner::{StringId, StringInterner};
+use rustc_hash::FxHashMap;
 
 /// Demonstration of how type narrowing integrates with if statement checking
 ///
