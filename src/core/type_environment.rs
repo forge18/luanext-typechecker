@@ -62,7 +62,8 @@ pub struct TypeEnvironment<'arena> {
     /// Cache for utility type resolutions (Pick, Omit, Keyof, etc.)
     utility_type_cache: std::cell::RefCell<FxHashMap<UtilityTypeCacheKey, Type<'arena>>>,
     /// Cache for generic type instantiations
-    generic_instantiation_cache: std::cell::RefCell<FxHashMap<GenericInstantiationCacheKey, Type<'arena>>>,
+    generic_instantiation_cache:
+        std::cell::RefCell<FxHashMap<GenericInstantiationCacheKey, Type<'arena>>>,
 }
 
 impl<'arena> TypeEnvironment<'arena> {
@@ -366,7 +367,10 @@ impl<'arena> TypeEnvironment<'arena> {
     }
 
     /// Get a class's primary constructor parameters
-    pub fn get_class_constructor(&self, class_name: &str) -> Option<&&'arena [ConstructorParameter<'arena>]> {
+    pub fn get_class_constructor(
+        &self,
+        class_name: &str,
+    ) -> Option<&&'arena [ConstructorParameter<'arena>]> {
         self.class_constructors.get(class_name)
     }
 

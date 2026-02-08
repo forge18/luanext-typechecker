@@ -31,7 +31,11 @@ pub fn instantiate_type<'arena>(
 }
 
 /// Recursively substitute type parameters in a type
-fn substitute_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, substitutions: &FxHashMap<StringId, Type<'arena>>) -> Result<Type<'arena>, String> {
+fn substitute_type<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+    substitutions: &FxHashMap<StringId, Type<'arena>>,
+) -> Result<Type<'arena>, String> {
     match &typ.kind {
         // If this is a type reference that matches a type parameter, substitute it
         TypeKind::Reference(type_ref) => {
@@ -90,7 +94,10 @@ fn substitute_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, sub
                 .map(|elem| substitute_type(arena, elem, substitutions))
                 .collect();
 
-            Ok(Type::new(TypeKind::Tuple(arena.alloc_slice_fill_iter(substituted_elems?)), typ.span))
+            Ok(Type::new(
+                TypeKind::Tuple(arena.alloc_slice_fill_iter(substituted_elems?)),
+                typ.span,
+            ))
         }
 
         // Union type: substitute each member
@@ -100,7 +107,10 @@ fn substitute_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, sub
                 .map(|member| substitute_type(arena, member, substitutions))
                 .collect();
 
-            Ok(Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(substituted_members?)), typ.span))
+            Ok(Type::new(
+                TypeKind::Union(arena.alloc_slice_fill_iter(substituted_members?)),
+                typ.span,
+            ))
         }
 
         // Intersection type: substitute each member
@@ -202,7 +212,8 @@ fn substitute_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, sub
                     ObjectTypeMember::Index(index) => {
                         // Index signatures have key_type and value_type
                         // key_type is IndexKeyType (String or Number), not Type
-                        let substituted_value = substitute_type(arena, &index.value_type, substitutions)?;
+                        let substituted_value =
+                            substitute_type(arena, &index.value_type, substitutions)?;
 
                         ObjectTypeMember::Index(typedlua_parser::ast::statement::IndexSignature {
                             value_type: substituted_value,
@@ -443,9 +454,11 @@ pub fn instantiate_statement<'arena>(
             span: var_decl.span,
         }),
 
-        Statement::Function(func_decl) => {
-            Statement::Function(instantiate_function_declaration(arena, func_decl, substitutions))
-        }
+        Statement::Function(func_decl) => Statement::Function(instantiate_function_declaration(
+            arena,
+            func_decl,
+            substitutions,
+        )),
 
         Statement::Expression(expr) => {
             Statement::Expression(instantiate_expression(arena, expr, substitutions))
@@ -637,11 +650,13 @@ pub fn instantiate_expression<'arena>(
         ),
 
         ExpressionKind::Call(callee, args, type_args) => {
-            let new_args: Vec<_> = args.iter()
+            let new_args: Vec<_> = args
+                .iter()
                 .map(|a| instantiate_argument(arena, a, substitutions))
                 .collect();
             let new_type_args = type_args.as_ref().map(|tas| {
-                let v: Vec<_> = tas.iter()
+                let v: Vec<_> = tas
+                    .iter()
                     .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
                     .collect();
                 arena.alloc_slice_fill_iter(v) as &[_]
@@ -654,11 +669,13 @@ pub fn instantiate_expression<'arena>(
         }
 
         ExpressionKind::MethodCall(obj, method, args, type_args) => {
-            let new_args: Vec<_> = args.iter()
+            let new_args: Vec<_> = args
+                .iter()
                 .map(|a| instantiate_argument(arena, a, substitutions))
                 .collect();
             let new_type_args = type_args.as_ref().map(|tas| {
-                let v: Vec<_> = tas.iter()
+                let v: Vec<_> = tas
+                    .iter()
                     .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
                     .collect();
                 arena.alloc_slice_fill_iter(v) as &[_]
@@ -716,13 +733,15 @@ pub fn instantiate_expression<'arena>(
             arena.alloc(instantiate_expression(arena, right, substitutions)),
         ),
 
-        ExpressionKind::Match(match_expr) => {
-            ExpressionKind::Match(instantiate_match_expression(arena, match_expr, substitutions))
-        }
+        ExpressionKind::Match(match_expr) => ExpressionKind::Match(instantiate_match_expression(
+            arena,
+            match_expr,
+            substitutions,
+        )),
 
-        ExpressionKind::Parenthesized(inner) => {
-            ExpressionKind::Parenthesized(arena.alloc(instantiate_expression(arena, inner, substitutions)))
-        }
+        ExpressionKind::Parenthesized(inner) => ExpressionKind::Parenthesized(
+            arena.alloc(instantiate_expression(arena, inner, substitutions)),
+        ),
 
         ExpressionKind::TypeAssertion(expr_inner, typ) => ExpressionKind::TypeAssertion(
             arena.alloc(instantiate_expression(arena, expr_inner, substitutions)),
@@ -740,11 +759,13 @@ pub fn instantiate_expression<'arena>(
         ),
 
         ExpressionKind::OptionalCall(callee, args, type_args) => {
-            let new_args: Vec<_> = args.iter()
+            let new_args: Vec<_> = args
+                .iter()
                 .map(|a| instantiate_argument(arena, a, substitutions))
                 .collect();
             let new_type_args = type_args.as_ref().map(|tas| {
-                let v: Vec<_> = tas.iter()
+                let v: Vec<_> = tas
+                    .iter()
                     .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
                     .collect();
                 arena.alloc_slice_fill_iter(v) as &[_]
@@ -757,11 +778,13 @@ pub fn instantiate_expression<'arena>(
         }
 
         ExpressionKind::OptionalMethodCall(obj, method, args, type_args) => {
-            let new_args: Vec<_> = args.iter()
+            let new_args: Vec<_> = args
+                .iter()
                 .map(|a| instantiate_argument(arena, a, substitutions))
                 .collect();
             let new_type_args = type_args.as_ref().map(|tas| {
-                let v: Vec<_> = tas.iter()
+                let v: Vec<_> = tas
+                    .iter()
                     .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
                     .collect();
                 arena.alloc_slice_fill_iter(v) as &[_]
@@ -779,11 +802,13 @@ pub fn instantiate_expression<'arena>(
         }
 
         ExpressionKind::New(callee, args, type_args) => {
-            let new_args: Vec<_> = args.iter()
+            let new_args: Vec<_> = args
+                .iter()
                 .map(|a| instantiate_argument(arena, a, substitutions))
                 .collect();
             let new_type_args = type_args.as_ref().map(|tas| {
-                let v: Vec<_> = tas.iter()
+                let v: Vec<_> = tas
+                    .iter()
                     .map(|t| substitute_type(arena, t, substitutions).unwrap_or_else(|_| t.clone()))
                     .collect();
                 arena.alloc_slice_fill_iter(v) as &[_]
@@ -844,7 +869,9 @@ fn instantiate_array_element<'arena>(
         ArrayElement::Expression(e) => {
             ArrayElement::Expression(instantiate_expression(arena, e, substitutions))
         }
-        ArrayElement::Spread(e) => ArrayElement::Spread(instantiate_expression(arena, e, substitutions)),
+        ArrayElement::Spread(e) => {
+            ArrayElement::Spread(instantiate_expression(arena, e, substitutions))
+        }
     }
 }
 
@@ -936,9 +963,9 @@ fn instantiate_template_literal<'arena>(
         .iter()
         .map(|part| match part {
             TemplatePart::String(s) => TemplatePart::String(s.clone()),
-            TemplatePart::Expression(e) => {
-                TemplatePart::Expression(arena.alloc(instantiate_expression(arena, e, substitutions)))
-            }
+            TemplatePart::Expression(e) => TemplatePart::Expression(
+                arena.alloc(instantiate_expression(arena, e, substitutions)),
+            ),
         })
         .collect();
     TemplateLiteral {
@@ -964,9 +991,9 @@ fn instantiate_match_expression<'arena>(
                 .as_ref()
                 .map(|e| instantiate_expression(arena, e, substitutions)),
             body: match &arm.body {
-                MatchArmBody::Expression(e) => {
-                    MatchArmBody::Expression(arena.alloc(instantiate_expression(arena, e, substitutions)))
-                }
+                MatchArmBody::Expression(e) => MatchArmBody::Expression(
+                    arena.alloc(instantiate_expression(arena, e, substitutions)),
+                ),
                 MatchArmBody::Block(b) => {
                     MatchArmBody::Block(instantiate_block(arena, b, substitutions))
                 }
@@ -975,7 +1002,11 @@ fn instantiate_match_expression<'arena>(
         })
         .collect();
     MatchExpression {
-        value: arena.alloc(instantiate_expression(arena, &match_expr.value, substitutions)),
+        value: arena.alloc(instantiate_expression(
+            arena,
+            &match_expr.value,
+            substitutions,
+        )),
         arms: arena.alloc_slice_fill_iter(arms),
         span: match_expr.span,
     }
@@ -988,7 +1019,11 @@ fn instantiate_try_expression<'arena>(
     substitutions: &FxHashMap<StringId, Type<'arena>>,
 ) -> typedlua_parser::ast::expression::TryExpression<'arena> {
     typedlua_parser::ast::expression::TryExpression {
-        expression: arena.alloc(instantiate_expression(arena, &try_expr.expression, substitutions)),
+        expression: arena.alloc(instantiate_expression(
+            arena,
+            &try_expr.expression,
+            substitutions,
+        )),
         catch_variable: try_expr.catch_variable.clone(),
         catch_expression: arena.alloc(instantiate_expression(
             arena,
@@ -1125,7 +1160,12 @@ mod tests {
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
         // Try to instantiate with wrong number of type arguments
-        let result = instantiate_type(&arena, &type_ref_t, &[type_param], &[number_type, string_type]);
+        let result = instantiate_type(
+            &arena,
+            &type_ref_t,
+            &[type_param],
+            &[number_type, string_type],
+        );
 
         assert!(result.is_err());
     }
@@ -1223,10 +1263,9 @@ mod tests {
 
         // Argument type: Array<string>
         let arg_type = Type::new(
-            TypeKind::Array(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::String),
-                span,
-            ))),
+            TypeKind::Array(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::String), span)),
+            ),
             span,
         );
 
@@ -1252,10 +1291,9 @@ mod tests {
         // Type parameter T extends number
         let type_param = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
+            ),
             default: None,
             span,
         };
@@ -1277,10 +1315,9 @@ mod tests {
         // Type parameter T extends number
         let type_param = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
+            ),
             default: None,
             span,
         };
@@ -1580,7 +1617,8 @@ mod tests {
 
         let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
 
-        let result = instantiate_type(&arena, &nullable_type, &[type_param], &[string_type]).unwrap();
+        let result =
+            instantiate_type(&arena, &nullable_type, &[type_param], &[string_type]).unwrap();
 
         match &result.kind {
             TypeKind::Nullable(inner) => {
@@ -1625,7 +1663,8 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&arena, &nested_array, &[type_param], &[number_type]).unwrap();
+        let result =
+            instantiate_type(&arena, &nested_array, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Array(outer) => match &outer.kind {
@@ -1746,10 +1785,9 @@ mod tests {
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
             constraint: None,
-            default: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::String),
-                span,
-            ))),
+            default: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::String), span)),
+            ),
             span,
         };
 
@@ -1949,7 +1987,8 @@ mod tests {
 
         let number_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
 
-        let result = instantiate_type(&arena, &parenthesized_type, &[type_param], &[number_type]).unwrap();
+        let result =
+            instantiate_type(&arena, &parenthesized_type, &[type_param], &[number_type]).unwrap();
 
         match &result.kind {
             TypeKind::Parenthesized(inner) => {
@@ -2052,22 +2091,24 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Property(
-                    typedlua_parser::ast::statement::PropertySignature {
-                        name: Spanned::new(value_id, span),
-                        type_annotation: Type::new(
-                            TypeKind::Reference(TypeReference {
-                                name: Spanned::new(t_id, span),
-                                type_arguments: None,
+                members: arena.alloc_slice_fill_iter([
+                    typedlua_parser::ast::types::ObjectTypeMember::Property(
+                        typedlua_parser::ast::statement::PropertySignature {
+                            name: Spanned::new(value_id, span),
+                            type_annotation: Type::new(
+                                TypeKind::Reference(TypeReference {
+                                    name: Spanned::new(t_id, span),
+                                    type_arguments: None,
+                                    span,
+                                }),
                                 span,
-                            }),
+                            ),
+                            is_readonly: false,
+                            is_optional: false,
                             span,
-                        ),
-                        is_readonly: false,
-                        is_optional: false,
-                        span,
-                    },
-                )]),
+                        },
+                    ),
+                ]),
                 span,
             }),
             span,
@@ -2113,23 +2154,25 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Method(
-                    typedlua_parser::ast::statement::MethodSignature {
-                        name: Spanned::new(method_id, span),
-                        type_parameters: None,
-                        parameters: &[],
-                        return_type: Type::new(
-                            TypeKind::Reference(TypeReference {
-                                name: Spanned::new(t_id, span),
-                                type_arguments: None,
+                members: arena.alloc_slice_fill_iter([
+                    typedlua_parser::ast::types::ObjectTypeMember::Method(
+                        typedlua_parser::ast::statement::MethodSignature {
+                            name: Spanned::new(method_id, span),
+                            type_parameters: None,
+                            parameters: &[],
+                            return_type: Type::new(
+                                TypeKind::Reference(TypeReference {
+                                    name: Spanned::new(t_id, span),
+                                    type_arguments: None,
+                                    span,
+                                }),
                                 span,
-                            }),
+                            ),
+                            body: None,
                             span,
-                        ),
-                        body: None,
-                        span,
-                    },
-                )]),
+                        },
+                    ),
+                ]),
                 span,
             }),
             span,
@@ -2175,21 +2218,23 @@ mod tests {
 
         let obj_type = Type::new(
             TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                members: arena.alloc_slice_fill_iter([typedlua_parser::ast::types::ObjectTypeMember::Index(
-                    typedlua_parser::ast::statement::IndexSignature {
-                        key_name: Spanned::new(key_id, span),
-                        key_type: typedlua_parser::ast::statement::IndexKeyType::String,
-                        value_type: Type::new(
-                            TypeKind::Reference(TypeReference {
-                                name: Spanned::new(t_id, span),
-                                type_arguments: None,
+                members: arena.alloc_slice_fill_iter([
+                    typedlua_parser::ast::types::ObjectTypeMember::Index(
+                        typedlua_parser::ast::statement::IndexSignature {
+                            key_name: Spanned::new(key_id, span),
+                            key_type: typedlua_parser::ast::statement::IndexKeyType::String,
+                            value_type: Type::new(
+                                TypeKind::Reference(TypeReference {
+                                    name: Spanned::new(t_id, span),
+                                    type_arguments: None,
+                                    span,
+                                }),
                                 span,
-                            }),
+                            ),
                             span,
-                        ),
-                        span,
-                    },
-                )]),
+                        },
+                    ),
+                ]),
                 span,
             }),
             span,
@@ -2275,20 +2320,18 @@ mod tests {
 
         let type_param_t = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
+            ),
             default: None,
             span,
         };
 
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::String),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::String), span)),
+            ),
             default: None,
             span,
         };
@@ -2311,20 +2354,18 @@ mod tests {
 
         let type_param_t = TypeParameter {
             name: Spanned::new(t_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
+            ),
             default: None,
             span,
         };
 
         let type_param_u = TypeParameter {
             name: Spanned::new(u_id, span),
-            constraint: Some(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::String),
-                span,
-            ))),
+            constraint: Some(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::String), span)),
+            ),
             default: None,
             span,
         };
@@ -2343,10 +2384,9 @@ mod tests {
         let span = Span::new(0, 0, 0, 0);
 
         let param_type = Type::new(
-            TypeKind::Array(&*arena.alloc(Type::new(
-                TypeKind::Primitive(PrimitiveType::Number),
-                span,
-            ))),
+            TypeKind::Array(
+                &*arena.alloc(Type::new(TypeKind::Primitive(PrimitiveType::Number), span)),
+            ),
             span,
         );
 

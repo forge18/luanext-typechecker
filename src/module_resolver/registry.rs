@@ -3,7 +3,6 @@ use crate::{Symbol, SymbolKind, SymbolTable};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
-
 use std::sync::{Arc, RwLock};
 
 /// Status of a module in the compilation pipeline

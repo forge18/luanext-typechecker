@@ -46,7 +46,8 @@ pub struct TypeChecker<'a, 'arena> {
     /// Current namespace path for this module
     current_namespace: Option<Vec<String>>,
     /// Type parameters for each generic class (needed for override checking)
-    class_type_params: FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>>,
+    class_type_params:
+        FxHashMap<String, Vec<typedlua_parser::ast::statement::TypeParameter<'arena>>>,
     /// Track class inheritance for circular dependency detection
     class_parents: FxHashMap<String, String>,
     /// Track exported names to detect duplicates
@@ -241,8 +242,12 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     pub fn load_stdlib(&mut self) -> Result<(), String> {
         use crate::state::stdlib_loader;
 
-        let programs =
-            stdlib_loader::parse_stdlib_files(self.options.target, self.interner, self.common, self.arena)?;
+        let programs = stdlib_loader::parse_stdlib_files(
+            self.options.target,
+            self.interner,
+            self.common,
+            self.arena,
+        )?;
 
         for program in programs {
             for statement in program.statements.iter() {
@@ -661,7 +666,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check for statement
-    fn check_for_statement(&mut self, for_stmt: &ForStatement<'arena>) -> Result<(), TypeCheckError> {
+    fn check_for_statement(
+        &mut self,
+        for_stmt: &ForStatement<'arena>,
+    ) -> Result<(), TypeCheckError> {
         match for_stmt {
             ForStatement::Numeric(numeric) => {
                 self.symbol_table.enter_scope();
@@ -768,7 +776,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             let actual_return_type = if return_types.len() == 1 {
                 return_types[0].clone()
             } else {
-                Type::new(TypeKind::Tuple(self.arena.alloc_slice_fill_iter(return_types.into_iter())), return_stmt.span)
+                Type::new(
+                    TypeKind::Tuple(self.arena.alloc_slice_fill_iter(return_types.into_iter())),
+                    return_stmt.span,
+                )
             };
 
             // Check against expected return type
@@ -888,7 +899,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check type alias
-    fn check_type_alias(&mut self, alias: &TypeAliasDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_type_alias(
+        &mut self,
+        alias: &TypeAliasDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // For non-generic aliases, evaluate the type before delegating
         let evaluated_type = if alias.type_parameters.is_none() {
             Some(
@@ -910,7 +924,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check export statement and register exported symbols
-    fn check_export_statement(&mut self, export: &ExportDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_export_statement(
+        &mut self,
+        export: &ExportDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Extract export names and check for duplicates
         match &export.kind {
             ExportKind::Declaration(decl) => {
@@ -1005,20 +1022,20 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
                         // Create object type from interface members
                         let members_vec: Vec<ObjectTypeMember<'arena>> = iface
-                                    .members
-                                    .iter()
-                                    .map(|member| match member {
-                                        InterfaceMember::Property(prop) => {
-                                            ObjectTypeMember::Property(prop.clone())
-                                        }
-                                        InterfaceMember::Method(method) => {
-                                            ObjectTypeMember::Method(method.clone())
-                                        }
-                                        InterfaceMember::Index(index) => {
-                                            ObjectTypeMember::Index(index.clone())
-                                        }
-                                    })
-                                    .collect();
+                            .members
+                            .iter()
+                            .map(|member| match member {
+                                InterfaceMember::Property(prop) => {
+                                    ObjectTypeMember::Property(prop.clone())
+                                }
+                                InterfaceMember::Method(method) => {
+                                    ObjectTypeMember::Method(method.clone())
+                                }
+                                InterfaceMember::Index(index) => {
+                                    ObjectTypeMember::Index(index.clone())
+                                }
+                            })
+                            .collect();
                         let obj_type = Type::new(
                             TypeKind::Object(ObjectType {
                                 members: self.arena.alloc_slice_fill_iter(members_vec.into_iter()),
@@ -1147,7 +1164,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
     /// Resolve a type reference, handling utility types and generic type application
     #[instrument(skip(self, type_ref), fields(type_name))]
-    fn resolve_type_reference(&self, type_ref: &TypeReference<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn resolve_type_reference(
+        &self,
+        type_ref: &TypeReference<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         let name = self.interner.resolve(type_ref.name.node);
         let name_owned = name.to_string();
         span!(Level::DEBUG, "resolve_type_reference", type_name = %name);
@@ -1171,7 +1191,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         result
     }
 
-    fn resolve_type_reference_inner(&self, type_ref: &TypeReference<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn resolve_type_reference_inner(
+        &self,
+        type_ref: &TypeReference<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         let name = self.interner.resolve(type_ref.name.node);
         let span = type_ref.span;
 
@@ -1190,7 +1213,14 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
                 return self
                     .type_env
-                    .resolve_utility_type(self.arena, &name, &resolved_args, span, self.interner, self.common)
+                    .resolve_utility_type(
+                        self.arena,
+                        &name,
+                        &resolved_args,
+                        span,
+                        self.interner,
+                        self.common,
+                    )
                     .map_err(|e| TypeCheckError::new(e, span));
             }
 
@@ -1820,7 +1850,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check class method
-    fn check_class_method(&mut self, method: &MethodDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_class_method(
+        &mut self,
+        method: &MethodDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&method.decorators)?;
 
@@ -1958,7 +1991,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check class getter
-    fn check_class_getter(&mut self, getter: &GetterDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_class_getter(
+        &mut self,
+        getter: &GetterDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&getter.decorators)?;
 
@@ -2008,7 +2044,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check class setter
-    fn check_class_setter(&mut self, setter: &SetterDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_class_setter(
+        &mut self,
+        setter: &SetterDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Check decorators
         self.check_decorators(&setter.decorators)?;
 
@@ -2199,7 +2238,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Check that an override method properly overrides a parent method
-    fn check_method_override(&self, method: &MethodDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_method_override(
+        &self,
+        method: &MethodDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Get current class context
         let class_ctx = self
             .access_control
@@ -2213,13 +2255,14 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             })?;
 
         // Get extends clause type arguments for generic parent instantiation
-        let extends_type_args: Option<&[Type<'arena>]> = class_ctx.extends_type.as_ref().and_then(|ext| {
-            if let TypeKind::Reference(type_ref) = &ext.kind {
-                type_ref.type_arguments
-            } else {
-                None
-            }
-        });
+        let extends_type_args: Option<&[Type<'arena>]> =
+            class_ctx.extends_type.as_ref().and_then(|ext| {
+                if let TypeKind::Reference(type_ref) = &ext.kind {
+                    type_ref.type_arguments
+                } else {
+                    None
+                }
+            });
 
         // Get parent class type parameters (if the parent is generic)
         let parent_type_params = class_ctx
@@ -2259,7 +2302,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
     /// Infer the type of an expression
     /// Delegates to TypeInferrer visitor
-    fn infer_expression_type(&mut self, expr: &Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn infer_expression_type(
+        &mut self,
+        expr: &Expression<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         let mut inferrer = TypeInferrer::new(
             self.arena,
             &mut self.symbol_table,
@@ -2279,7 +2325,12 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                 // First evaluate the operand recursively
                 let evaluated_operand = self.evaluate_type(operand)?;
                 use crate::types::utility_types::evaluate_keyof;
-                evaluate_keyof(self.arena, &evaluated_operand, &self.type_env, self.interner)
+                evaluate_keyof(
+                    self.arena,
+                    &evaluated_operand,
+                    &self.type_env,
+                    self.interner,
+                )
             }
             TypeKind::Mapped(mapped) => {
                 use crate::types::utility_types::evaluate_mapped_type;
@@ -2402,7 +2453,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                     .collect();
                 Type::new(
                     TypeKind::Object(typedlua_parser::ast::types::ObjectType {
-                        members: self.arena.alloc_slice_fill_iter(resolved_members.into_iter()),
+                        members: self
+                            .arena
+                            .alloc_slice_fill_iter(resolved_members.into_iter()),
                         span: obj_type.span,
                     }),
                     typ.span,
@@ -2411,7 +2464,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             TypeKind::Union(members) => {
                 let resolved: Vec<Type<'arena>> =
                     members.iter().map(|m| self.deep_resolve_type(m)).collect();
-                Type::new(TypeKind::Union(self.arena.alloc_slice_fill_iter(resolved.into_iter())), typ.span)
+                Type::new(
+                    TypeKind::Union(self.arena.alloc_slice_fill_iter(resolved.into_iter())),
+                    typ.span,
+                )
             }
             TypeKind::Nullable(inner) => {
                 let resolved = self.deep_resolve_type(inner);
@@ -2422,28 +2478,35 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                 Type::new(TypeKind::Array(self.arena.alloc(resolved)), typ.span)
             }
             TypeKind::Tuple(elems) => {
-                let resolved: Vec<Type<'arena>> = elems.iter().map(|e| self.deep_resolve_type(e)).collect();
-                Type::new(TypeKind::Tuple(self.arena.alloc_slice_fill_iter(resolved.into_iter())), typ.span)
+                let resolved: Vec<Type<'arena>> =
+                    elems.iter().map(|e| self.deep_resolve_type(e)).collect();
+                Type::new(
+                    TypeKind::Tuple(self.arena.alloc_slice_fill_iter(resolved.into_iter())),
+                    typ.span,
+                )
             }
             TypeKind::Function(func_type) => {
                 // Recursively resolve parameter types and return type in function types
-                let resolved_params: Vec<typedlua_parser::ast::statement::Parameter<'arena>> = func_type
-                    .parameters
-                    .iter()
-                    .map(|param| typedlua_parser::ast::statement::Parameter {
-                        type_annotation: param
-                            .type_annotation
-                            .as_ref()
-                            .map(|t| self.deep_resolve_type(t)),
-                        ..param.clone()
-                    })
-                    .collect();
+                let resolved_params: Vec<typedlua_parser::ast::statement::Parameter<'arena>> =
+                    func_type
+                        .parameters
+                        .iter()
+                        .map(|param| typedlua_parser::ast::statement::Parameter {
+                            type_annotation: param
+                                .type_annotation
+                                .as_ref()
+                                .map(|t| self.deep_resolve_type(t)),
+                            ..param.clone()
+                        })
+                        .collect();
 
                 let resolved_return = self.deep_resolve_type(&func_type.return_type);
 
                 Type::new(
                     TypeKind::Function(typedlua_parser::ast::types::FunctionType {
-                        parameters: self.arena.alloc_slice_fill_iter(resolved_params.into_iter()),
+                        parameters: self
+                            .arena
+                            .alloc_slice_fill_iter(resolved_params.into_iter()),
                         return_type: self.arena.alloc(resolved_return),
                         ..func_type.clone()
                     }),
@@ -2510,7 +2573,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                     .iter()
                     .map(|m| self.substitute_type_args_in_type(m, type_args, interface_name))
                     .collect();
-                Type::new(TypeKind::Union(self.arena.alloc_slice_fill_iter(subst.into_iter())), typ.span)
+                Type::new(
+                    TypeKind::Union(self.arena.alloc_slice_fill_iter(subst.into_iter())),
+                    typ.span,
+                )
             }
             _ => typ.clone(),
         }
@@ -2590,7 +2656,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             ObjectTypeMember::Method(MethodSignature {
                 name: Spanned::new(self.interner.intern("upper"), span),
                 type_parameters: None,
-                parameters: self.arena.alloc_slice_fill_iter(std::iter::once(string_param_upper)),
+                parameters: self
+                    .arena
+                    .alloc_slice_fill_iter(std::iter::once(string_param_upper)),
                 return_type: self.type_env.get_string_type(span),
                 body: None,
                 span,
@@ -2598,7 +2666,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             ObjectTypeMember::Method(MethodSignature {
                 name: Spanned::new(self.interner.intern("lower"), span),
                 type_parameters: None,
-                parameters: self.arena.alloc_slice_fill_iter(std::iter::once(string_param_lower)),
+                parameters: self
+                    .arena
+                    .alloc_slice_fill_iter(std::iter::once(string_param_lower)),
                 return_type: self.type_env.get_string_type(span),
                 body: None,
                 span,
@@ -2640,7 +2710,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             ObjectTypeMember::Method(MethodSignature {
                 name: Spanned::new(self.interner.intern("abs"), span),
                 type_parameters: None,
-                parameters: self.arena.alloc_slice_fill_iter(std::iter::once(math_param_abs)),
+                parameters: self
+                    .arena
+                    .alloc_slice_fill_iter(std::iter::once(math_param_abs)),
                 return_type: self.type_env.get_number_type(span),
                 body: None,
                 span,
@@ -2684,7 +2756,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Extract exports from a program for module system
-    pub fn extract_exports(&self, program: &Program<'arena>) -> crate::module_resolver::ModuleExports {
+    pub fn extract_exports(
+        &self,
+        program: &Program<'arena>,
+    ) -> crate::module_resolver::ModuleExports {
         // Delegate to module_phase for export extraction
         phases::module_phase::extract_exports(
             program,
@@ -2696,7 +2771,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         )
     }
 
-    fn check_throw_statement(&mut self, stmt: &ThrowStatement<'arena>) -> Result<(), TypeCheckError> {
+    fn check_throw_statement(
+        &mut self,
+        stmt: &ThrowStatement<'arena>,
+    ) -> Result<(), TypeCheckError> {
         self.infer_expression_type(&stmt.expression)?;
         Ok(())
     }
@@ -2705,7 +2783,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         phases::inference_phase::check_rethrow_statement(&self.in_catch_block, span)
     }
 
-    fn check_import_statement(&mut self, import: &ImportDeclaration<'arena>) -> Result<(), TypeCheckError> {
+    fn check_import_statement(
+        &mut self,
+        import: &ImportDeclaration<'arena>,
+    ) -> Result<(), TypeCheckError> {
         // Delegate to module_phase for import processing
         phases::module_phase::check_import_statement(
             import,
@@ -2989,8 +3070,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bumpalo::Bump;
     use crate::cli::diagnostics::CollectingDiagnosticHandler;
+    use bumpalo::Bump;
     use typedlua_parser::lexer::Lexer;
     use typedlua_parser::parser::Parser;
 
@@ -3034,8 +3115,9 @@ mod tests {
         let mut parser = Parser::new(tokens, handler.clone(), &interner, &common, &arena);
         let program = parser.parse().expect("Parsing failed");
 
-        let mut type_checker = TypeChecker::new_with_stdlib(handler.clone(), &interner, &common, &arena)
-            .expect("Failed to load stdlib");
+        let mut type_checker =
+            TypeChecker::new_with_stdlib(handler.clone(), &interner, &common, &arena)
+                .expect("Failed to load stdlib");
         let result = type_checker.check_program(&program);
 
         // Check if there are errors in the diagnostic handler

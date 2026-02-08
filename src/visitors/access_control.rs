@@ -275,10 +275,7 @@ impl<'arena> AccessControlVisitor<'arena> for AccessControl<'arena> {
             // Check if class exists in access control
             if !self.class_members.contains_key(class_name) {
                 return Err(TypeCheckError::new(
-                    format!(
-                        "Class '{}' does not exist",
-                        class_name
-                    ),
+                    format!("Class '{}' does not exist", class_name),
                     span,
                 ));
             }

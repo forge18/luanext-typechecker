@@ -5,12 +5,12 @@ mod tests {
     use crate::utils::symbol_table::SymbolTable;
     use crate::visitors::{AccessControl, TypeCheckVisitor, TypeInferenceVisitor, TypeInferrer};
     use crate::NarrowingContext;
+    use bumpalo::Bump;
     use std::sync::Arc;
     use typedlua_parser::ast::expression::*;
     use typedlua_parser::ast::types::*;
     use typedlua_parser::ast::Ident;
     use typedlua_parser::prelude::*;
-    use bumpalo::Bump;
     use typedlua_parser::span::Span;
     use typedlua_parser::string_interner::StringInterner;
 
@@ -1652,16 +1652,18 @@ mod tests {
         let obj_id = interner.intern("obj");
         let obj_type = Type {
             kind: TypeKind::Object(ObjectType {
-                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(PropertySignature {
-                    is_readonly: false,
-                    name: Ident::new(interner.intern("prop"), Span::default()),
-                    is_optional: false,
-                    type_annotation: Type::new(
-                        TypeKind::Primitive(PrimitiveType::Number),
-                        Span::default(),
-                    ),
-                    span: Span::default(),
-                })]),
+                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(
+                    PropertySignature {
+                        is_readonly: false,
+                        name: Ident::new(interner.intern("prop"), Span::default()),
+                        is_optional: false,
+                        type_annotation: Type::new(
+                            TypeKind::Primitive(PrimitiveType::Number),
+                            Span::default(),
+                        ),
+                        span: Span::default(),
+                    },
+                )]),
                 span: Span::default(),
             }),
             span: Span::default(),
@@ -1988,16 +1990,18 @@ mod tests {
         let other_id = interner.intern("other");
         let other_type = Type {
             kind: TypeKind::Object(ObjectType {
-                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(PropertySignature {
-                    is_readonly: false,
-                    name: Ident::new(interner.intern("a"), Span::default()),
-                    is_optional: false,
-                    type_annotation: Type::new(
-                        TypeKind::Primitive(PrimitiveType::String),
-                        Span::default(),
-                    ),
-                    span: Span::default(),
-                })]),
+                members: arena.alloc_slice_fill_iter([ObjectTypeMember::Property(
+                    PropertySignature {
+                        is_readonly: false,
+                        name: Ident::new(interner.intern("a"), Span::default()),
+                        is_optional: false,
+                        type_annotation: Type::new(
+                            TypeKind::Primitive(PrimitiveType::String),
+                            Span::default(),
+                        ),
+                        span: Span::default(),
+                    },
+                )]),
                 span: Span::default(),
             }),
             span: Span::default(),

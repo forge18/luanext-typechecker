@@ -148,7 +148,11 @@ pub fn type_to_string(typ: &Type) -> String {
 ///    - If `never` is present, returns just `never`
 ///    - Removes types that are covered by broader types
 ///    - Flattens nested unions
-pub fn canonicalize_union<'arena>(types: Vec<Type<'arena>>, span: Span, arena: &'arena Bump) -> Type<'arena> {
+pub fn canonicalize_union<'arena>(
+    types: Vec<Type<'arena>>,
+    span: Span,
+    arena: &'arena Bump,
+) -> Type<'arena> {
     if types.is_empty() {
         return Type::new(TypeKind::Primitive(PrimitiveType::Never), span);
     }
@@ -193,7 +197,11 @@ pub fn canonicalize_union<'arena>(types: Vec<Type<'arena>>, span: Span, arena: &
     Type::new(TypeKind::Union(slice), span)
 }
 
-fn add_type_to_union<'arena>(union: &mut Vec<Type<'arena>>, typ: Type<'arena>, has_never: &mut bool) {
+fn add_type_to_union<'arena>(
+    union: &mut Vec<Type<'arena>>,
+    typ: Type<'arena>,
+    has_never: &mut bool,
+) {
     if let TypeKind::Primitive(PrimitiveType::Never) = typ.kind {
         *has_never = true;
         return;

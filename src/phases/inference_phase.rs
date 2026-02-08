@@ -164,10 +164,7 @@ mod tests {
             span,
         );
         let result = check_return_statement(
-            &typedlua_parser::ast::statement::ReturnStatement {
-                values: &[],
-                span,
-            },
+            &typedlua_parser::ast::statement::ReturnStatement { values: &[], span },
             Some(&return_type),
             span,
         );
@@ -178,10 +175,7 @@ mod tests {
     fn test_check_return_outside_function() {
         let span = Span::new(0, 10, 0, 10);
         let result = check_return_statement(
-            &typedlua_parser::ast::statement::ReturnStatement {
-                values: &[],
-                span,
-            },
+            &typedlua_parser::ast::statement::ReturnStatement { values: &[], span },
             None,
             span,
         );

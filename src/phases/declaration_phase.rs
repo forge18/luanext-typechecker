@@ -10,9 +10,9 @@
 //! The phase focuses on DECLARING symbols (adding them to the symbol table) before
 //! full type checking occurs. This enables forward references and proper scope resolution.
 
-use bumpalo::Bump;
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::TypeCheckError;
+use bumpalo::Bump;
 use typedlua_parser::ast::pattern::{ArrayPatternElement, Pattern, PatternWithDefault};
 use typedlua_parser::ast::statement::{
     DeclareConstStatement, DeclareFunctionStatement, DeclareNamespaceStatement,
@@ -79,20 +79,20 @@ pub fn register_function_signature<'arena>(
     }
 
     // Create function type
-    let return_type = decl.return_type.clone().unwrap_or_else(|| {
-        Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span)
-    });
-    let func_type =
-        Type::new(
-            TypeKind::Function(FunctionType {
-                type_parameters: decl.type_parameters,
-                parameters: decl.parameters,
-                return_type: arena.alloc(return_type),
-                throws: decl.throws,
-                span: decl.span,
-            }),
-            decl.span,
-        );
+    let return_type = decl
+        .return_type
+        .clone()
+        .unwrap_or_else(|| Type::new(TypeKind::Primitive(PrimitiveType::Void), decl.span));
+    let func_type = Type::new(
+        TypeKind::Function(FunctionType {
+            type_parameters: decl.type_parameters,
+            parameters: decl.parameters,
+            return_type: arena.alloc(return_type),
+            throws: decl.throws,
+            span: decl.span,
+        }),
+        decl.span,
+    );
 
     // Declare function in symbol table
     let symbol = Symbol::new(
@@ -151,7 +151,10 @@ pub fn declare_pattern<'arena>(
                 TypeKind::Array(elem_type) => {
                     for elem in array_pattern.elements.iter() {
                         match elem {
-                            ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
+                            ArrayPatternElement::Pattern(PatternWithDefault {
+                                pattern: pat,
+                                ..
+                            }) => {
                                 declare_pattern(
                                     pat,
                                     (*elem_type).clone(),
@@ -186,7 +189,10 @@ pub fn declare_pattern<'arena>(
                     let mut type_index = 0;
                     for elem in array_pattern.elements.iter() {
                         match elem {
-                            ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
+                            ArrayPatternElement::Pattern(PatternWithDefault {
+                                pattern: pat,
+                                ..
+                            }) => {
                                 let elem_type = if type_index < elem_types.len() {
                                     elem_types[type_index].clone()
                                 } else {
@@ -206,20 +212,30 @@ pub fn declare_pattern<'arena>(
                             ArrayPatternElement::Rest(ident) => {
                                 // Rest gets array of remaining tuple element types
                                 let remaining = &elem_types[type_index..];
-                                let rest_type = if remaining.is_empty() {
-                                    Type::new(TypeKind::Array(arena.alloc(Type::new(
-                                        TypeKind::Primitive(PrimitiveType::Unknown),
-                                        span,
-                                    ))), span)
-                                } else if remaining.len() == 1 {
-                                    Type::new(TypeKind::Array(arena.alloc(remaining[0].clone())), span)
-                                } else {
-                                    let union_types = arena.alloc_slice_clone(remaining);
-                                    Type::new(TypeKind::Array(arena.alloc(Type::new(
-                                        TypeKind::Union(union_types),
-                                        span,
-                                    ))), span)
-                                };
+                                let rest_type =
+                                    if remaining.is_empty() {
+                                        Type::new(
+                                            TypeKind::Array(arena.alloc(Type::new(
+                                                TypeKind::Primitive(PrimitiveType::Unknown),
+                                                span,
+                                            ))),
+                                            span,
+                                        )
+                                    } else if remaining.len() == 1 {
+                                        Type::new(
+                                            TypeKind::Array(arena.alloc(remaining[0].clone())),
+                                            span,
+                                        )
+                                    } else {
+                                        let union_types = arena.alloc_slice_clone(remaining);
+                                        Type::new(
+                                            TypeKind::Array(arena.alloc(Type::new(
+                                                TypeKind::Union(union_types),
+                                                span,
+                                            ))),
+                                            span,
+                                        )
+                                    };
                                 let symbol = Symbol::new(
                                     interner.resolve(ident.node).to_string(),
                                     kind,
@@ -273,10 +289,7 @@ pub fn declare_pattern<'arena>(
                         let types = arena.alloc_slice_fill_iter(array_elem_types);
                         Type::new(TypeKind::Union(types), span)
                     };
-                    let array_type = Type::new(
-                        TypeKind::Array(arena.alloc(merged_elem)),
-                        span,
-                    );
+                    let array_type = Type::new(TypeKind::Array(arena.alloc(merged_elem)), span);
                     return declare_pattern(
                         pattern,
                         array_type,
@@ -310,11 +323,8 @@ pub fn declare_pattern<'arena>(
 
             if let TypeKind::Object(obj_type) = &typ.kind {
                 // Collect the set of destructured property names for rest computation
-                let destructured_keys: Vec<_> = obj_pattern
-                    .properties
-                    .iter()
-                    .map(|p| p.key.node)
-                    .collect();
+                let destructured_keys: Vec<_> =
+                    obj_pattern.properties.iter().map(|p| p.key.node).collect();
 
                 for prop_pattern in obj_pattern.properties.iter() {
                     // For computed properties, we can't statically resolve the key,

@@ -361,7 +361,9 @@ mod tests {
         let arena = Bump::new();
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string = make_type(TypeKind::Primitive(PrimitiveType::String));
-        let number_or_string = make_type(TypeKind::Union(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
+        let number_or_string = make_type(TypeKind::Union(
+            arena.alloc_slice_fill_iter([number.clone(), string.clone()]),
+        ));
 
         // number is assignable to number | string
         assert!(TypeCompatibility::is_assignable(&number, &number_or_string));
@@ -425,9 +427,9 @@ mod tests {
     fn test_literal_nil_to_nullable() {
         let arena = Bump::new();
         let nil_type = make_type(TypeKind::Primitive(PrimitiveType::Nil));
-        let nullable_string = make_type(TypeKind::Nullable(&*arena.alloc(make_type(
-            TypeKind::Primitive(PrimitiveType::String),
-        ))));
+        let nullable_string = make_type(TypeKind::Nullable(
+            &*arena.alloc(make_type(TypeKind::Primitive(PrimitiveType::String))),
+        ));
 
         // nil is assignable to nullable string
         assert!(TypeCompatibility::is_assignable(
@@ -442,13 +444,19 @@ mod tests {
         let number = make_type(TypeKind::Primitive(PrimitiveType::Number));
         let string = make_type(TypeKind::Primitive(PrimitiveType::String));
 
-        let tuple1 = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
-        let tuple2 = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), string.clone()])));
+        let tuple1 = make_type(TypeKind::Tuple(
+            arena.alloc_slice_fill_iter([number.clone(), string.clone()]),
+        ));
+        let tuple2 = make_type(TypeKind::Tuple(
+            arena.alloc_slice_fill_iter([number.clone(), string.clone()]),
+        ));
 
         // Same tuples should be assignable
         assert!(TypeCompatibility::is_assignable(&tuple1, &tuple2));
 
-        let tuple_diff = make_type(TypeKind::Tuple(arena.alloc_slice_fill_iter([number.clone(), number.clone()])));
+        let tuple_diff = make_type(TypeKind::Tuple(
+            arena.alloc_slice_fill_iter([number.clone(), number.clone()]),
+        ));
         assert!(!TypeCompatibility::is_assignable(&tuple_diff, &tuple1));
     }
 

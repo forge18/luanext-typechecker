@@ -420,7 +420,11 @@ fn typeof_string_to_type<'arena>(type_name: &str) -> Option<Type<'arena>> {
 }
 
 /// Exclude a type from a union
-fn exclude_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, to_exclude: &Type<'arena>) -> Option<Type<'arena>> {
+fn exclude_type<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+    to_exclude: &Type<'arena>,
+) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let remaining: Vec<Type<'arena>> = types
@@ -437,7 +441,10 @@ fn exclude_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, to_exc
             } else if remaining.len() == 1 {
                 Some(remaining.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&remaining)), typ.span))
+                Some(Type::new(
+                    TypeKind::Union(arena.alloc_slice_clone(&remaining)),
+                    typ.span,
+                ))
             }
         }
         _ if types_equal(typ, to_exclude) => Some(Type::new(
@@ -449,10 +456,14 @@ fn exclude_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>, to_exc
 }
 
 /// Remove nil from a type (for non-nil narrowing)
-fn remove_nil_from_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn remove_nil_from_type<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
-            let remaining: Vec<Type<'arena>> = types.iter().filter(|t| !is_nil_type(t)).cloned().collect();
+            let remaining: Vec<Type<'arena>> =
+                types.iter().filter(|t| !is_nil_type(t)).cloned().collect();
 
             if remaining.is_empty() {
                 Some(Type::new(
@@ -462,7 +473,10 @@ fn remove_nil_from_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>
             } else if remaining.len() == 1 {
                 Some(remaining.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&remaining)), typ.span))
+                Some(Type::new(
+                    TypeKind::Union(arena.alloc_slice_clone(&remaining)),
+                    typ.span,
+                ))
             }
         }
         _ if is_nil_type(typ) => Some(Type::new(
@@ -482,7 +496,10 @@ fn is_nil_type<'arena>(typ: &Type<'arena>) -> bool {
 }
 
 /// Make a type truthy (remove nil and false)
-fn make_truthy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn make_truthy_type<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
             let truthy: Vec<Type<'arena>> = types
@@ -499,7 +516,10 @@ fn make_truthy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) ->
             } else if truthy.len() == 1 {
                 Some(truthy.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&truthy)), typ.span))
+                Some(Type::new(
+                    TypeKind::Union(arena.alloc_slice_clone(&truthy)),
+                    typ.span,
+                ))
             }
         }
         _ if is_falsy_type(typ) => Some(Type::new(
@@ -511,10 +531,14 @@ fn make_truthy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) ->
 }
 
 /// Make a type falsy (only nil or false)
-fn make_falsy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> Option<Type<'arena>> {
+fn make_falsy_type<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+) -> Option<Type<'arena>> {
     match &typ.kind {
         TypeKind::Union(types) => {
-            let falsy: Vec<Type<'arena>> = types.iter().filter(|t| is_falsy_type(t)).cloned().collect();
+            let falsy: Vec<Type<'arena>> =
+                types.iter().filter(|t| is_falsy_type(t)).cloned().collect();
 
             if falsy.is_empty() {
                 Some(Type::new(
@@ -524,7 +548,10 @@ fn make_falsy_type<'arena>(arena: &'arena bumpalo::Bump, typ: &Type<'arena>) -> 
             } else if falsy.len() == 1 {
                 Some(falsy.into_iter().next().unwrap())
             } else {
-                Some(Type::new(TypeKind::Union(arena.alloc_slice_clone(&falsy)), typ.span))
+                Some(Type::new(
+                    TypeKind::Union(arena.alloc_slice_clone(&falsy)),
+                    typ.span,
+                ))
             }
         }
         _ if is_falsy_type(typ) => Some(typ.clone()),

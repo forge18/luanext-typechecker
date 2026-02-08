@@ -4,9 +4,9 @@
 //! definition files into AST programs. The caller is responsible for
 //! processing the statements (e.g., type checking, populating symbol tables).
 
-use bumpalo::Bump;
 use crate::cli::config::LuaVersion;
 use crate::cli::diagnostics::CollectingDiagnosticHandler;
+use bumpalo::Bump;
 use std::sync::Arc;
 use typedlua_parser::ast::Program;
 use typedlua_parser::lexer::Lexer;

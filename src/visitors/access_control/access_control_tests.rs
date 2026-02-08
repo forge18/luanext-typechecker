@@ -52,7 +52,11 @@ mod tests {
         }
     }
 
-    fn create_test_setter<'a>(name: &str, access: AccessModifier, param_type: Type<'a>) -> ClassMemberInfo<'a> {
+    fn create_test_setter<'a>(
+        name: &str,
+        access: AccessModifier,
+        param_type: Type<'a>,
+    ) -> ClassMemberInfo<'a> {
         ClassMemberInfo {
             name: name.to_string(),
             access,

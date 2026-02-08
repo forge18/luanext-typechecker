@@ -108,7 +108,10 @@ pub fn extract_exports<'arena>(
                                 );
                                 exports.add_named(
                                     export_name,
-                                    ExportedSymbol::new(symbol_to_static(symbol.clone()), is_type_only),
+                                    ExportedSymbol::new(
+                                        symbol_to_static(symbol.clone()),
+                                        is_type_only,
+                                    ),
                                 );
                             }
                         }
@@ -128,7 +131,8 @@ pub fn extract_exports<'arena>(
                         is_exported: true,
                         references: Vec::new(),
                     };
-                    exports.set_default(ExportedSymbol::new(symbol_to_static(default_symbol), false));
+                    exports
+                        .set_default(ExportedSymbol::new(symbol_to_static(default_symbol), false));
                 }
             }
         }
@@ -149,32 +153,47 @@ fn extract_declaration_export<'arena>(
             if let Pattern::Identifier(ident) = &var_decl.pattern {
                 let ident_name = interner.resolve(ident.node);
                 if let Some(symbol) = symbol_table.lookup(&ident_name) {
-                    exports.add_named(ident_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
+                    exports.add_named(
+                        ident_name,
+                        ExportedSymbol::new(symbol_to_static(symbol.clone()), false),
+                    );
                 }
             }
         }
         Statement::Function(func_decl) => {
             let func_name = interner.resolve(func_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&func_name) {
-                exports.add_named(func_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
+                exports.add_named(
+                    func_name,
+                    ExportedSymbol::new(symbol_to_static(symbol.clone()), false),
+                );
             }
         }
         Statement::Class(class_decl) => {
             let class_name = interner.resolve(class_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&class_name) {
-                exports.add_named(class_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), false));
+                exports.add_named(
+                    class_name,
+                    ExportedSymbol::new(symbol_to_static(symbol.clone()), false),
+                );
             }
         }
         Statement::TypeAlias(type_alias) => {
             let alias_name = interner.resolve(type_alias.name.node);
             if let Some(symbol) = symbol_table.lookup(&alias_name) {
-                exports.add_named(alias_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), true));
+                exports.add_named(
+                    alias_name,
+                    ExportedSymbol::new(symbol_to_static(symbol.clone()), true),
+                );
             }
         }
         Statement::Interface(interface_decl) => {
             let interface_name = interner.resolve(interface_decl.name.node);
             if let Some(symbol) = symbol_table.lookup(&interface_name) {
-                exports.add_named(interface_name, ExportedSymbol::new(symbol_to_static(symbol.clone()), true));
+                exports.add_named(
+                    interface_name,
+                    ExportedSymbol::new(symbol_to_static(symbol.clone()), true),
+                );
             }
         }
         _ => {}
@@ -570,16 +589,16 @@ mod tests {
         let mut module_dependencies: Vec<PathBuf> = Vec::new();
 
         let import = typedlua_parser::ast::statement::ImportDeclaration {
-            clause: typedlua_parser::ast::statement::ImportClause::Named(arena.alloc_slice_fill_iter([
-                typedlua_parser::ast::statement::ImportSpecifier {
+            clause: typedlua_parser::ast::statement::ImportClause::Named(
+                arena.alloc_slice_fill_iter([typedlua_parser::ast::statement::ImportSpecifier {
                     imported: typedlua_parser::ast::Spanned::new(interner.intern("foo"), span),
                     local: Some(typedlua_parser::ast::Spanned::new(
                         interner.intern("foo"),
                         span,
                     )),
                     span,
-                },
-            ])),
+                }]),
+            ),
             source: "./my_module.lua".to_string(),
             span,
         };

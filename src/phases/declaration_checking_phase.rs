@@ -169,7 +169,10 @@ pub fn check_enum_declaration<'arena>(
     } else if variants.len() == 1 {
         variants.into_iter().next().unwrap()
     } else {
-        Type::new(TypeKind::Union(arena.alloc_slice_fill_iter(variants.into_iter())), enum_decl.span)
+        Type::new(
+            TypeKind::Union(arena.alloc_slice_fill_iter(variants.into_iter())),
+            enum_decl.span,
+        )
     };
 
     type_env
@@ -256,14 +259,14 @@ pub fn check_interface_declaration<'arena>(
 
         // Create placeholder object type with interface members
         let members_vec: Vec<ObjectTypeMember<'arena>> = iface
-                    .members
-                    .iter()
-                    .map(|member| match member {
-                        InterfaceMember::Property(prop) => ObjectTypeMember::Property(prop.clone()),
-                        InterfaceMember::Method(method) => ObjectTypeMember::Method(method.clone()),
-                        InterfaceMember::Index(index) => ObjectTypeMember::Index(index.clone()),
-                    })
-                    .collect();
+            .members
+            .iter()
+            .map(|member| match member {
+                InterfaceMember::Property(prop) => ObjectTypeMember::Property(prop.clone()),
+                InterfaceMember::Method(method) => ObjectTypeMember::Method(method.clone()),
+                InterfaceMember::Index(index) => ObjectTypeMember::Index(index.clone()),
+            })
+            .collect();
         let obj_type = Type::new(
             TypeKind::Object(ObjectType {
                 members: arena.alloc_slice_fill_iter(members_vec.into_iter()),
@@ -855,18 +858,27 @@ where
 {
     if let TypeKind::Object(obj) = &interface.kind {
         use typedlua_parser::ast::statement::{MethodSignature, PropertySignature};
-        let new_members: Vec<ObjectTypeMember<'arena>> = obj.members.iter().map(|member| {
-            match member {
+        let new_members: Vec<ObjectTypeMember<'arena>> = obj
+            .members
+            .iter()
+            .map(|member| match member {
                 ObjectTypeMember::Method(method) => {
-                    let new_return_type = substitute_fn(&method.return_type, type_args, interface_name);
-                    let new_params: Vec<_> = method.parameters.iter().map(|param| {
-                        let new_type_ann = param.type_annotation.as_ref()
-                            .map(|t| substitute_fn(t, type_args, interface_name));
-                        typedlua_parser::ast::statement::Parameter {
-                            type_annotation: new_type_ann,
-                            ..param.clone()
-                        }
-                    }).collect();
+                    let new_return_type =
+                        substitute_fn(&method.return_type, type_args, interface_name);
+                    let new_params: Vec<_> = method
+                        .parameters
+                        .iter()
+                        .map(|param| {
+                            let new_type_ann = param
+                                .type_annotation
+                                .as_ref()
+                                .map(|t| substitute_fn(t, type_args, interface_name));
+                            typedlua_parser::ast::statement::Parameter {
+                                type_annotation: new_type_ann,
+                                ..param.clone()
+                            }
+                        })
+                        .collect();
                     ObjectTypeMember::Method(MethodSignature {
                         parameters: arena.alloc_slice_fill_iter(new_params.into_iter()),
                         return_type: new_return_type,
@@ -881,8 +893,8 @@ where
                     })
                 }
                 other => other.clone(),
-            }
-        }).collect();
+            })
+            .collect();
         Type::new(
             TypeKind::Object(ObjectType {
                 members: arena.alloc_slice_fill_iter(new_members.into_iter()),

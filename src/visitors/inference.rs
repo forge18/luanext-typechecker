@@ -35,7 +35,10 @@ struct PatternBindings<'arena> {
 /// Trait for type inference operations
 pub trait TypeInferenceVisitor<'arena>: TypeCheckVisitor {
     /// Infer the type of an expression
-    fn infer_expression(&mut self, expr: &Expression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
+    fn infer_expression(
+        &mut self,
+        expr: &Expression<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of binary operation
     fn infer_binary_op(
@@ -80,7 +83,11 @@ pub trait TypeInferenceVisitor<'arena>: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Infer type of index access
-    fn infer_index(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
+    fn infer_index(
+        &self,
+        obj_type: &Type<'arena>,
+        span: Span,
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Make a type optional by adding nil to the union
     fn make_optional(&self, typ: Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError>;
@@ -100,7 +107,10 @@ pub trait TypeInferenceVisitor<'arena>: TypeCheckVisitor {
     ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check match expression and return result type
-    fn check_match(&mut self, match_expr: &MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError>;
+    fn check_match(
+        &mut self,
+        match_expr: &MatchExpression<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError>;
 
     /// Check a pattern and bind variables
     fn check_pattern(
@@ -151,7 +161,10 @@ impl<'a, 'arena> TypeCheckVisitor for TypeInferrer<'a, 'arena> {
 
 impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
     #[instrument(skip(self, expr), fields(expr_kind))]
-    fn infer_expression(&mut self, expr: &Expression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn infer_expression(
+        &mut self,
+        expr: &Expression<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         let span = expr.span;
         let expr_kind = format!("{:?}", expr.kind);
 
@@ -307,10 +320,12 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 if elements.is_empty() {
                     // Empty array has unknown element type
                     return Ok(Type::new(
-                        TypeKind::Array(self.arena.alloc(Type::new(
-                            TypeKind::Primitive(PrimitiveType::Unknown),
-                            span,
-                        ))),
+                        TypeKind::Array(
+                            self.arena.alloc(Type::new(
+                                TypeKind::Primitive(PrimitiveType::Unknown),
+                                span,
+                            )),
+                        ),
                         span,
                     ));
                 }
@@ -349,10 +364,12 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 // Find common type or create union
                 if element_types.is_empty() {
                     return Ok(Type::new(
-                        TypeKind::Array(self.arena.alloc(Type::new(
-                            TypeKind::Primitive(PrimitiveType::Unknown),
-                            span,
-                        ))),
+                        TypeKind::Array(
+                            self.arena.alloc(Type::new(
+                                TypeKind::Primitive(PrimitiveType::Unknown),
+                                span,
+                            )),
+                        ),
                         span,
                     ));
                 }
@@ -379,7 +396,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                     Type::new(TypeKind::Union(types), span)
                 };
 
-                Ok(Type::new(TypeKind::Array(self.arena.alloc(result_type)), span))
+                Ok(Type::new(
+                    TypeKind::Array(self.arena.alloc(result_type)),
+                    span,
+                ))
             }
 
             ExpressionKind::Object(props) => {
@@ -522,7 +542,7 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 // Build the function type
                 let func_type = FunctionType {
                     type_parameters: func_expr.type_parameters.clone(),
-                    parameters: func_expr.parameters.clone(),
+                    parameters: func_expr.parameters,
                     return_type: self.arena.alloc(
                         func_expr
                             .return_type
@@ -563,15 +583,11 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
 
                 // Infer the body type
                 let body_type = match &arrow_fn.body {
-                    ArrowBody::Expression(expr) => {
-                        self.infer_expression(expr)?
-                    }
-                    ArrowBody::Block(block) => {
-                        match self.infer_block_return_type(block)? {
-                            Some(return_type) => return_type,
-                            None => Type::new(TypeKind::Primitive(PrimitiveType::Void), span),
-                        }
-                    }
+                    ArrowBody::Expression(expr) => self.infer_expression(expr)?,
+                    ArrowBody::Block(block) => match self.infer_block_return_type(block)? {
+                        Some(return_type) => return_type,
+                        None => Type::new(TypeKind::Primitive(PrimitiveType::Void), span),
+                    },
                 };
 
                 // Check return type if specified
@@ -1048,7 +1064,8 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
             }
             TypeKind::Union(types) => {
                 // For union types, try to find the member in each non-nil variant
-                let non_nil_types: Vec<&Type<'arena>> = types.iter().filter(|t| !self.is_nil(t)).collect();
+                let non_nil_types: Vec<&Type<'arena>> =
+                    types.iter().filter(|t| !self.is_nil(t)).collect();
 
                 if non_nil_types.is_empty() {
                     // All types are nil - member access on nil returns nil
@@ -1079,7 +1096,11 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
         }
     }
 
-    fn infer_index(&self, obj_type: &Type<'arena>, span: Span) -> Result<Type<'arena>, TypeCheckError> {
+    fn infer_index(
+        &self,
+        obj_type: &Type<'arena>,
+        span: Span,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         match &obj_type.kind {
             TypeKind::Array(elem_type) => Ok((**elem_type).clone()),
             TypeKind::Tuple(types) => {
@@ -1161,7 +1182,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
     }
 
     #[instrument(skip(self, match_expr), fields(arms = match_expr.arms.len()))]
-    fn check_match(&mut self, match_expr: &MatchExpression<'arena>) -> Result<Type<'arena>, TypeCheckError> {
+    fn check_match(
+        &mut self,
+        match_expr: &MatchExpression<'arena>,
+    ) -> Result<Type<'arena>, TypeCheckError> {
         debug!(span = ?match_expr.span, "Checking match expression");
 
         // Type check the value being matched
@@ -1248,7 +1272,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                 union_types[0] = arm_type.clone();
             } else {
                 // Types are incompatible, add to union
-                if !union_types.iter().any(|t| TypeCompatibility::is_assignable(t, arm_type)) {
+                if !union_types
+                    .iter()
+                    .any(|t| TypeCompatibility::is_assignable(t, arm_type))
+                {
                     union_types.push(arm_type.clone());
                 }
             }
@@ -1337,7 +1364,10 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                     TypeKind::Array(elem_type) => {
                         for elem in array_pattern.elements.iter() {
                             match elem {
-                                ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
+                                ArrayPatternElement::Pattern(PatternWithDefault {
+                                    pattern: pat,
+                                    ..
+                                }) => {
                                     self.check_pattern(pat, *elem_type)?;
                                 }
                                 ArrayPatternElement::Rest(ident) => {
@@ -1474,7 +1504,11 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
 
     /// Check if a type has an operator overload for the given binary operation.
     /// Returns the operator's return type if found.
-    fn check_operator_overload(&self, operand_type: &Type<'arena>, op: BinaryOp) -> Option<Type<'arena>> {
+    fn check_operator_overload(
+        &self,
+        operand_type: &Type<'arena>,
+        op: BinaryOp,
+    ) -> Option<Type<'arena>> {
         let op_kind = match op {
             BinaryOp::Add => OperatorKind::Add,
             BinaryOp::Subtract => OperatorKind::Subtract,
@@ -1569,7 +1603,9 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
 
                 for elem in array_pattern.elements.iter() {
                     match elem {
-                        ArrayPatternElement::Pattern(PatternWithDefault { pattern: pat, .. }) => {
+                        ArrayPatternElement::Pattern(PatternWithDefault {
+                            pattern: pat, ..
+                        }) => {
                             self.extract_pattern_bindings_recursive(pat, &elem_type, bindings)?;
                         }
                         ArrayPatternElement::Rest(ident) => {
@@ -1836,9 +1872,10 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
         e2: &ArrayPatternElement,
     ) -> bool {
         match (e1, e2) {
-            (ArrayPatternElement::Pattern(PatternWithDefault { pattern: p1, .. }), ArrayPatternElement::Pattern(PatternWithDefault { pattern: p2, .. })) => {
-                self.pattern_subsumes(p1, p2)
-            }
+            (
+                ArrayPatternElement::Pattern(PatternWithDefault { pattern: p1, .. }),
+                ArrayPatternElement::Pattern(PatternWithDefault { pattern: p2, .. }),
+            ) => self.pattern_subsumes(p1, p2),
             (ArrayPatternElement::Rest(_), ArrayPatternElement::Rest(_)) => true,
             (ArrayPatternElement::Hole, ArrayPatternElement::Hole) => true,
             _ => false,
@@ -1941,7 +1978,11 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
 
     /// Check if match arms are exhaustive for the given type
     /// Helper to collect all literals from a pattern, including those in or-patterns
-    fn collect_pattern_literals<'b>(&self, pattern: &'b Pattern<'arena>, literals: &mut Vec<&'b Literal>) {
+    fn collect_pattern_literals<'b>(
+        &self,
+        pattern: &'b Pattern<'arena>,
+        literals: &mut Vec<&'b Literal>,
+    ) {
         match pattern {
             Pattern::Literal(lit, _) => {
                 literals.push(lit);
@@ -2131,7 +2172,8 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
                         } else if matching_types.len() == 1 {
                             Ok(matching_types[0].clone())
                         } else {
-                            let types = self.arena.alloc_slice_fill_iter(matching_types.into_iter());
+                            let types =
+                                self.arena.alloc_slice_fill_iter(matching_types.into_iter());
                             Ok(Type::new(TypeKind::Union(types), typ.span))
                         }
                     }
