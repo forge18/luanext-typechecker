@@ -653,61 +653,211 @@ pub fn evaluate_mapped_type<'arena>(
 }
 
 /// Evaluate keyof operator - extracts property names from an object type
+/// Supports: objects, unions, intersections, arrays, tuples, and recursive type resolution
 pub fn evaluate_keyof<'arena>(
     arena: &'arena bumpalo::Bump,
     typ: &Type<'arena>,
     type_env: &TypeEnvironment<'arena>,
     interner: &StringInterner,
 ) -> Result<Type<'arena>, String> {
-    // Resolve type reference first
-    let resolved_type = match &typ.kind {
-        TypeKind::Reference(type_ref) => {
-            let type_name = interner.resolve(type_ref.name.node);
-            match type_env.lookup_type(&type_name) {
-                Some(t) => t.clone(),
-                None => return Err(format!("Type '{}' not found", type_name)),
-            }
-        }
-        _ => typ.clone(),
-    };
+    evaluate_keyof_recursive(arena, typ, type_env, interner, &mut FxHashMap::default())
+}
+
+/// Internal recursive implementation of keyof evaluation with cycle detection
+fn evaluate_keyof_recursive<'arena>(
+    arena: &'arena bumpalo::Bump,
+    typ: &Type<'arena>,
+    type_env: &TypeEnvironment<'arena>,
+    interner: &StringInterner,
+    visited: &mut FxHashMap<String, ()>,
+) -> Result<Type<'arena>, String> {
+    // Recursively resolve type references and type aliases
+    let resolved_type = resolve_type_deeply(typ, type_env, interner, visited)?;
 
     match &resolved_type.kind {
+        // keyof object = union of property/method name literals
         TypeKind::Object(obj) => {
             let keys: Vec<_> = obj
                 .members
                 .iter()
                 .filter_map(|member| match member {
-                    ObjectTypeMember::Property(prop) => Some(Type::new(
-                        TypeKind::Literal(Literal::String(prop.name.node.to_string())),
-                        prop.span,
-                    )),
-                    ObjectTypeMember::Method(method) => Some(Type::new(
-                        TypeKind::Literal(Literal::String(method.name.node.to_string())),
-                        method.span,
-                    )),
+                    ObjectTypeMember::Property(prop) => {
+                        let name = interner.resolve(prop.name.node);
+                        Some(Type::new(
+                            TypeKind::Literal(Literal::String(name.to_string())),
+                            prop.span,
+                        ))
+                    }
+                    ObjectTypeMember::Method(method) => {
+                        let name = interner.resolve(method.name.node);
+                        Some(Type::new(
+                            TypeKind::Literal(Literal::String(name.to_string())),
+                            method.span,
+                        ))
+                    }
                     // Index signatures don't contribute to keyof
                     ObjectTypeMember::Index(_) => None,
                 })
                 .collect();
 
-            if keys.is_empty() {
-                Ok(Type::new(
-                    TypeKind::Primitive(PrimitiveType::Never),
-                    typ.span,
-                ))
-            } else if keys.len() == 1 {
-                Ok(keys.into_iter().next().expect("length checked above"))
-            } else {
-                Ok(Type::new(
-                    TypeKind::Union(arena.alloc_slice_fill_iter(keys)),
-                    resolved_type.span,
-                ))
-            }
+            create_union_or_never(arena, keys, typ.span)
         }
+
+        // keyof (A | B) = (keyof A) | (keyof B) - Distributive over unions
+        TypeKind::Union(types) => {
+            let mut all_keys = Vec::new();
+            for member_type in types.iter() {
+                let keys_type =
+                    evaluate_keyof_recursive(arena, member_type, type_env, interner, visited)?;
+                match &keys_type.kind {
+                    TypeKind::Union(keys) => all_keys.extend_from_slice(keys),
+                    TypeKind::Primitive(PrimitiveType::Never) => {
+                        // keyof never contributes nothing to the union
+                    }
+                    _ => all_keys.push(keys_type),
+                }
+            }
+            create_union_or_never(arena, all_keys, typ.span)
+        }
+
+        // keyof (A & B) = (keyof A) | (keyof B) - Union of both key sets
+        TypeKind::Intersection(types) => {
+            let mut all_keys = Vec::new();
+            for member_type in types.iter() {
+                let keys_type =
+                    evaluate_keyof_recursive(arena, member_type, type_env, interner, visited)?;
+                match &keys_type.kind {
+                    TypeKind::Union(keys) => all_keys.extend_from_slice(keys),
+                    TypeKind::Primitive(PrimitiveType::Never) => {
+                        // keyof never contributes nothing
+                    }
+                    _ => all_keys.push(keys_type),
+                }
+            }
+            create_union_or_never(arena, all_keys, typ.span)
+        }
+
+        // keyof T[] = number (array indices)
+        TypeKind::Array(_) => Ok(Type::new(
+            TypeKind::Primitive(PrimitiveType::Number),
+            typ.span,
+        )),
+
+        // keyof [A, B, C] = 0 | 1 | 2 (tuple indices as number literals)
+        TypeKind::Tuple(types) => {
+            let keys: Vec<_> = (0..types.len())
+                .map(|i| Type::new(TypeKind::Literal(Literal::Number(i as f64)), typ.span))
+                .collect();
+            create_union_or_never(arena, keys, typ.span)
+        }
+
+        // keyof string/number/boolean/etc. = never (primitives have no keys)
+        TypeKind::Primitive(_) => Ok(Type::new(
+            TypeKind::Primitive(PrimitiveType::Never),
+            typ.span,
+        )),
+
+        // keyof function = never (functions have no indexable keys in the type system)
+        TypeKind::Function(_) => Ok(Type::new(
+            TypeKind::Primitive(PrimitiveType::Never),
+            typ.span,
+        )),
+
+        // Parenthesized type - unwrap and evaluate
+        TypeKind::Parenthesized(inner) => {
+            evaluate_keyof_recursive(arena, inner, type_env, interner, visited)
+        }
+
+        // Nullable type - keyof (T | nil) = keyof T
+        TypeKind::Nullable(inner) => {
+            evaluate_keyof_recursive(arena, inner, type_env, interner, visited)
+        }
+
+        // Other types don't support keyof
         _ => Err(format!(
-            "keyof requires an object type, got {:?}",
+            "keyof operator cannot be applied to type: {:?}",
             resolved_type.kind
         )),
+    }
+}
+
+/// Recursively resolve a type by following type references, with cycle detection
+fn resolve_type_deeply<'arena>(
+    typ: &Type<'arena>,
+    type_env: &TypeEnvironment<'arena>,
+    interner: &StringInterner,
+    visited: &mut FxHashMap<String, ()>,
+) -> Result<Type<'arena>, String> {
+    match &typ.kind {
+        TypeKind::Reference(type_ref) => {
+            let type_name = interner.resolve(type_ref.name.node).to_string();
+
+            // Check for cycles
+            if visited.contains_key(&type_name) {
+                return Err(format!(
+                    "Circular type reference detected while resolving keyof: {}",
+                    type_name
+                ));
+            }
+
+            // Mark as visited
+            visited.insert(type_name.clone(), ());
+
+            match type_env.lookup_type(&type_name) {
+                Some(resolved) => {
+                    // Recursively resolve the resolved type
+                    let result = resolve_type_deeply(resolved, type_env, interner, visited)?;
+
+                    // Unmark after resolution
+                    visited.remove(&type_name);
+
+                    Ok(result)
+                }
+                None => Err(format!("Type '{}' not found", type_name)),
+            }
+        }
+        TypeKind::Parenthesized(inner) => resolve_type_deeply(inner, type_env, interner, visited),
+        TypeKind::Nullable(inner) => {
+            // For nullable types, just resolve the inner type and return the original structure
+            // We don't need to allocate a new Nullable type since we're just following references
+            resolve_type_deeply(inner, type_env, interner, visited)
+        }
+        // For other types, return as-is (no further resolution needed)
+        _ => Ok(typ.clone()),
+    }
+}
+
+/// Helper to create a union type from a list of types, or never if empty
+fn create_union_or_never<'arena>(
+    arena: &'arena bumpalo::Bump,
+    types: Vec<Type<'arena>>,
+    span: Span,
+) -> Result<Type<'arena>, String> {
+    if types.is_empty() {
+        Ok(Type::new(TypeKind::Primitive(PrimitiveType::Never), span))
+    } else if types.len() == 1 {
+        Ok(types.into_iter().next().expect("length checked above"))
+    } else {
+        // Deduplicate types by their string representation
+        let mut unique_keys = Vec::new();
+        let mut seen = FxHashMap::default();
+
+        for key in types {
+            let key_str = format!("{:?}", key.kind);
+            if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(key_str) {
+                e.insert(());
+                unique_keys.push(key);
+            }
+        }
+
+        if unique_keys.len() == 1 {
+            Ok(unique_keys.into_iter().next().expect("length checked"))
+        } else {
+            Ok(Type::new(
+                TypeKind::Union(arena.alloc_slice_fill_iter(unique_keys)),
+                span,
+            ))
+        }
     }
 }
 
@@ -2245,5 +2395,370 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert!(result.contains(&"a".to_string()));
         assert!(result.contains(&"b".to_string()));
+    }
+
+    // ========================================================================
+    // Comprehensive keyof Tests
+    // ========================================================================
+
+    #[test]
+    fn test_keyof_simple_object() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let obj = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![
+                (
+                    "name",
+                    Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                    false,
+                    false,
+                ),
+                (
+                    "age",
+                    Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                    false,
+                    false,
+                ),
+            ],
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &obj, &type_env, &interner).unwrap();
+
+        // Should return "name" | "age"
+        if let TypeKind::Union(types) = &result.kind {
+            assert_eq!(types.len(), 2);
+        } else {
+            panic!("Expected union type, got {:?}", result.kind);
+        }
+    }
+
+    #[test]
+    fn test_keyof_empty_object() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let obj = make_object_type_with_interner(&arena, &interner, vec![]);
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &obj, &type_env, &interner).unwrap();
+
+        // Should return never
+        assert!(matches!(
+            result.kind,
+            TypeKind::Primitive(PrimitiveType::Never)
+        ));
+    }
+
+    #[test]
+    fn test_keyof_array() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let array_type = Type::new(
+            TypeKind::Array(&*arena.alloc(Type::new(
+                TypeKind::Primitive(PrimitiveType::String),
+                make_span(),
+            ))),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &array_type, &type_env, &interner).unwrap();
+
+        // Should return number (array indices)
+        assert!(matches!(
+            result.kind,
+            TypeKind::Primitive(PrimitiveType::Number)
+        ));
+    }
+
+    #[test]
+    fn test_keyof_tuple() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let tuple_type = Type::new(
+            TypeKind::Tuple(arena.alloc_slice_fill_iter([
+                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                Type::new(TypeKind::Primitive(PrimitiveType::Boolean), make_span()),
+            ])),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &tuple_type, &type_env, &interner).unwrap();
+
+        // Should return 0 | 1 | 2
+        if let TypeKind::Union(types) = &result.kind {
+            assert_eq!(types.len(), 3);
+            // Check that all are number literals
+            for ty in types.iter() {
+                assert!(matches!(ty.kind, TypeKind::Literal(Literal::Number(_))));
+            }
+        } else {
+            panic!("Expected union type for tuple keyof");
+        }
+    }
+
+    #[test]
+    fn test_keyof_union_of_objects() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+
+        let obj1 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "name",
+                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let obj2 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "age",
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let union = Type::new(
+            TypeKind::Union(arena.alloc_slice_fill_iter([obj1, obj2])),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &union, &type_env, &interner).unwrap();
+
+        // keyof (A | B) = (keyof A) | (keyof B) = "name" | "age"
+        if let TypeKind::Union(types) = &result.kind {
+            assert_eq!(types.len(), 2);
+        } else {
+            panic!("Expected union type");
+        }
+    }
+
+    #[test]
+    fn test_keyof_intersection_of_objects() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+
+        let obj1 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "name",
+                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let obj2 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "age",
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let intersection = Type::new(
+            TypeKind::Intersection(arena.alloc_slice_fill_iter([obj1, obj2])),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &intersection, &type_env, &interner).unwrap();
+
+        // keyof (A & B) = (keyof A) | (keyof B) = "name" | "age"
+        if let TypeKind::Union(types) = &result.kind {
+            assert_eq!(types.len(), 2);
+        } else {
+            panic!("Expected union type");
+        }
+    }
+
+    #[test]
+    fn test_keyof_primitive() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let string_type = Type::new(TypeKind::Primitive(PrimitiveType::String), make_span());
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &string_type, &type_env, &interner).unwrap();
+
+        // Primitives should return never
+        assert!(matches!(
+            result.kind,
+            TypeKind::Primitive(PrimitiveType::Never)
+        ));
+    }
+
+    #[test]
+    fn test_keyof_function() {
+        use luanext_parser::ast::types::FunctionType;
+
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let func_type = Type::new(
+            TypeKind::Function(FunctionType {
+                type_parameters: None,
+                parameters: &[],
+                return_type: &*arena.alloc(Type::new(
+                    TypeKind::Primitive(PrimitiveType::Void),
+                    make_span(),
+                )),
+                throws: None,
+                span: make_span(),
+            }),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &func_type, &type_env, &interner).unwrap();
+
+        // Functions should return never
+        assert!(matches!(
+            result.kind,
+            TypeKind::Primitive(PrimitiveType::Never)
+        ));
+    }
+
+    #[test]
+    fn test_keyof_parenthesized() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let obj = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "x",
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let parenthesized = Type::new(TypeKind::Parenthesized(&*arena.alloc(obj)), make_span());
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &parenthesized, &type_env, &interner).unwrap();
+
+        // Should unwrap parentheses and return "x"
+        assert!(matches!(result.kind, TypeKind::Literal(Literal::String(_))));
+    }
+
+    #[test]
+    fn test_keyof_nullable() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let obj = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "x",
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let nullable = Type::new(TypeKind::Nullable(&*arena.alloc(obj)), make_span());
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &nullable, &type_env, &interner).unwrap();
+
+        // Should extract keys from the inner type, ignoring nil
+        assert!(matches!(result.kind, TypeKind::Literal(Literal::String(_))));
+    }
+
+    #[test]
+    fn test_keyof_type_reference() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+        let mut type_env = TypeEnvironment::new();
+
+        // Create an object type
+        let obj = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "name",
+                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        // Register it in the type environment as a type alias
+        type_env
+            .register_type_alias("Person".to_string(), obj.clone())
+            .unwrap();
+
+        // Create a type reference to Person
+        use luanext_parser::ast::types::TypeReference;
+        let person_id = interner.intern("Person");
+        let type_ref = Type::new(
+            TypeKind::Reference(TypeReference {
+                name: Ident::new(person_id, make_span()),
+                type_arguments: None,
+                span: make_span(),
+            }),
+            make_span(),
+        );
+
+        let result = evaluate_keyof(&arena, &type_ref, &type_env, &interner).unwrap();
+
+        // Should resolve the reference and return "name"
+        assert!(matches!(result.kind, TypeKind::Literal(Literal::String(_))));
+    }
+
+    #[test]
+    fn test_keyof_deduplication() {
+        let arena = Bump::new();
+        let interner = StringInterner::new();
+
+        // Create two objects with the same key "x"
+        let obj1 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "x",
+                Type::new(TypeKind::Primitive(PrimitiveType::String), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let obj2 = make_object_type_with_interner(
+            &arena,
+            &interner,
+            vec![(
+                "x",
+                Type::new(TypeKind::Primitive(PrimitiveType::Number), make_span()),
+                false,
+                false,
+            )],
+        );
+
+        let union = Type::new(
+            TypeKind::Union(arena.alloc_slice_fill_iter([obj1, obj2])),
+            make_span(),
+        );
+
+        let type_env = TypeEnvironment::new();
+        let result = evaluate_keyof(&arena, &union, &type_env, &interner).unwrap();
+
+        // Should deduplicate and return just "x"
+        assert!(matches!(result.kind, TypeKind::Literal(Literal::String(_))));
     }
 }

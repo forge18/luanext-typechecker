@@ -171,9 +171,9 @@ fn default_true() -> bool {
 
 fn default_module_paths() -> Vec<String> {
     vec![
-        "./?.tl".to_string(),
-        "./lua_modules/?.tl".to_string(),
-        "./lua_modules/?/init.tl".to_string(),
+        "./?.luax".to_string(),
+        "./lua_modules/?.luax".to_string(),
+        "./lua_modules/?/init.luax".to_string(),
     ]
 }
 
@@ -226,14 +226,14 @@ impl Default for CompilerConfig {
     fn default() -> Self {
         Self {
             compiler_options: CompilerOptions::default(),
-            include: vec!["**/*.tl".to_string()],
+            include: vec!["**/*.luax".to_string()],
             exclude: default_exclude(),
         }
     }
 }
 
 impl CompilerConfig {
-    /// Load configuration from a YAML file (tlconfig.yaml)
+    /// Load configuration from a YAML file (luanext.config.yaml)
     pub fn from_file(path: &Path) -> Result<Self, crate::cli::errors::CompilationError> {
         let content = std::fs::read_to_string(path)?;
         let config: CompilerConfig = serde_yaml::from_str(&content)
@@ -241,7 +241,7 @@ impl CompilerConfig {
         Ok(config)
     }
 
-    /// Create a default configuration and write it to tlconfig.yaml
+    /// Create a default configuration and write it to luanext.config.yaml
     pub fn init_file(path: &Path) -> Result<(), crate::cli::errors::CompilationError> {
         let config = CompilerConfig::default();
         let yaml = serde_yaml::to_string(&config)

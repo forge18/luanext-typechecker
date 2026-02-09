@@ -35,9 +35,10 @@ impl TypeCompatibility {
         source: &Type<'arena>,
         target: &Type<'arena>,
         type_env: &TypeEnvironment<'arena>,
+        interner: &luanext_parser::string_interner::StringInterner,
     ) -> bool {
         let mut visited: HashSet<(usize, usize)> = HashSet::new();
-        Self::is_assignable_with_env_recursive(source, target, type_env, &mut visited)
+        Self::is_assignable_with_env_recursive(source, target, type_env, interner, &mut visited)
     }
 
     fn is_assignable_with_cache_recursive(
@@ -64,6 +65,7 @@ impl TypeCompatibility {
         source: &Type<'arena>,
         target: &Type<'arena>,
         type_env: &TypeEnvironment<'arena>,
+        interner: &luanext_parser::string_interner::StringInterner,
         visited: &mut HashSet<(usize, usize)>,
     ) -> bool {
         let source_ptr = type_ptr(source);
@@ -94,9 +96,6 @@ impl TypeCompatibility {
         match (&source.kind, &target.kind) {
             // Type references - resolve aliases
             (TypeKind::Reference(s_ref), TypeKind::Reference(t_ref)) => {
-                use luanext_parser::string_interner::StringInterner;
-                let interner = StringInterner::new_with_common_identifiers().0;
-
                 let s_name = interner.resolve(s_ref.name.node);
                 let t_name = interner.resolve(t_ref.name.node);
 
@@ -109,7 +108,7 @@ impl TypeCompatibility {
                             // Check all type arguments are compatible
                             s_args.iter().zip(t_args.iter()).all(|(s_arg, t_arg)| {
                                 Self::is_assignable_with_env_recursive(
-                                    s_arg, t_arg, type_env, visited,
+                                    s_arg, t_arg, type_env, interner, visited,
                                 )
                             })
                         }
@@ -124,19 +123,19 @@ impl TypeCompatibility {
                         (Some(resolved_s), Some(resolved_t)) => {
                             // Both are aliases - check if their underlying types are compatible
                             Self::is_assignable_with_env_recursive(
-                                resolved_s, resolved_t, type_env, visited,
+                                resolved_s, resolved_t, type_env, interner, visited,
                             )
                         }
                         (Some(resolved_s), None) => {
                             // Source is an alias, target is not - check if alias resolves to target
                             Self::is_assignable_with_env_recursive(
-                                resolved_s, target, type_env, visited,
+                                resolved_s, target, type_env, interner, visited,
                             )
                         }
                         (None, Some(resolved_t)) => {
                             // Target is an alias, source is not - check if source matches resolved target
                             Self::is_assignable_with_env_recursive(
-                                source, resolved_t, type_env, visited,
+                                source, resolved_t, type_env, interner, visited,
                             )
                         }
                         (None, None) => {
@@ -149,24 +148,24 @@ impl TypeCompatibility {
 
             // Type reference vs concrete type - resolve the reference
             (TypeKind::Reference(s_ref), _) => {
-                use luanext_parser::string_interner::StringInterner;
-                let interner = StringInterner::new_with_common_identifiers().0;
                 let s_name = interner.resolve(s_ref.name.node);
 
                 if let Some(resolved) = type_env.lookup_type_alias(&s_name) {
-                    Self::is_assignable_with_env_recursive(resolved, target, type_env, visited)
+                    Self::is_assignable_with_env_recursive(
+                        resolved, target, type_env, interner, visited,
+                    )
                 } else {
                     // Not an alias - can't resolve, assume incompatible
                     false
                 }
             }
             (_, TypeKind::Reference(t_ref)) => {
-                use luanext_parser::string_interner::StringInterner;
-                let interner = StringInterner::new_with_common_identifiers().0;
                 let t_name = interner.resolve(t_ref.name.node);
 
                 if let Some(resolved) = type_env.lookup_type_alias(&t_name) {
-                    Self::is_assignable_with_env_recursive(source, resolved, type_env, visited)
+                    Self::is_assignable_with_env_recursive(
+                        source, resolved, type_env, interner, visited,
+                    )
                 } else {
                     // Not an alias - can't resolve, assume incompatible
                     false

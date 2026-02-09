@@ -941,7 +941,13 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                         if let Ok(arg_type) = self.infer_expression(&arg.value) {
                             if let Some(param_type) = &param.type_annotation {
                                 // Check if argument type is assignable to parameter type
-                                if !TypeCompatibility::is_assignable(&arg_type, param_type) {
+                                // Use is_assignable_with_env to properly resolve type aliases
+                                if !TypeCompatibility::is_assignable_with_env(
+                                    &arg_type,
+                                    param_type,
+                                    self.type_env,
+                                    self.interner,
+                                ) {
                                     self.diagnostic_handler.error(
                                         arg.value.span,
                                         &format!(
