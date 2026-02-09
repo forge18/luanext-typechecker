@@ -40,7 +40,7 @@ pub struct TypeChecker<'a, 'arena> {
     /// Module resolver for imports
     module_resolver: Option<Arc<crate::module_resolver::ModuleResolver>>,
     /// Track module dependencies for cache invalidation
-    module_dependencies: Vec<std::path::PathBuf>,
+    module_dependencies: Vec<crate::module_resolver::TypedDependency>,
     /// Stack of whether we're inside a catch block (for rethrow validation)
     in_catch_block: Vec<bool>,
     /// Current namespace path for this module
@@ -2797,7 +2797,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
     }
 
     /// Get the list of module dependencies tracked during type checking
-    pub fn get_module_dependencies(&self) -> &[std::path::PathBuf] {
+    pub fn get_module_dependencies(&self) -> &[crate::module_resolver::TypedDependency] {
         &self.module_dependencies
     }
 

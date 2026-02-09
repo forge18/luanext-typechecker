@@ -12,7 +12,8 @@
 use crate::cli::diagnostics::DiagnosticHandler;
 use crate::core::type_environment::TypeEnvironment;
 use crate::module_resolver::{
-    ExportedSymbol, ModuleError, ModuleExports, ModuleId, ModuleRegistry, ModuleResolver,
+    EdgeKind, ExportedSymbol, ModuleError, ModuleExports, ModuleId, ModuleRegistry, ModuleResolver,
+    TypedDependency,
 };
 use crate::utils::symbol_table::{Symbol, SymbolKind, SymbolTable};
 use crate::visitors::{AccessControl, AccessControlVisitor, ClassMemberInfo, ClassMemberKind};
@@ -24,7 +25,6 @@ use luanext_parser::ast::Program;
 use luanext_parser::prelude::AccessModifier;
 use luanext_parser::span::Span;
 use luanext_parser::string_interner::StringInterner;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Callback trait for lazy type-checking of dependencies during import resolution
@@ -273,7 +273,7 @@ pub fn check_import_statement<'arena>(
     type_env: &mut TypeEnvironment<'arena>,
     access_control: &mut AccessControl,
     interner: &StringInterner,
-    module_dependencies: &mut Vec<PathBuf>,
+    module_dependencies: &mut Vec<TypedDependency>,
     module_registry: Option<&Arc<ModuleRegistry>>,
     module_resolver: Option<&Arc<ModuleResolver>>,
     current_module_id: Option<&ModuleId>,
@@ -462,7 +462,7 @@ fn resolve_import_type<'arena>(
     source: &str,
     symbol_name: &str,
     span: Span,
-    module_dependencies: &mut Vec<PathBuf>,
+    module_dependencies: &mut Vec<TypedDependency>,
     module_registry: Option<&Arc<ModuleRegistry>>,
     module_resolver: Option<&Arc<ModuleResolver>>,
     current_module_id: Option<&ModuleId>,
@@ -475,8 +475,16 @@ fn resolve_import_type<'arena>(
     {
         match resolver.resolve(source, current_id.path()) {
             Ok(source_module_id) => {
-                // Track dependency
-                module_dependencies.push(source_module_id.path().to_path_buf());
+                // Track dependency with edge kind
+                let edge_kind = if is_type_only_import {
+                    EdgeKind::TypeOnly
+                } else {
+                    EdgeKind::Value
+                };
+                module_dependencies.push(TypedDependency::new(
+                    source_module_id.path().to_path_buf(),
+                    edge_kind,
+                ));
 
                 // Try to get exports
                 match registry.get_exports(&source_module_id) {
@@ -484,36 +492,34 @@ fn resolve_import_type<'arena>(
                         if let Some(exported_sym) = source_exports.get_named(symbol_name) {
                             // Validation: ensure runtime imports don't use type-only exports
                             validate_import_export_compatibility(
-                                &exported_sym,
+                                exported_sym,
                                 is_type_only_import,
                                 symbol_name,
                                 &source_module_id,
                                 span,
                             )?;
-                            return Ok(exported_sym.symbol.typ.clone());
+                            Ok(exported_sym.symbol.typ.clone())
                         } else {
                             // Export doesn't exist
                             let error = ModuleError::ExportNotFound {
                                 module_id: source_module_id.clone(),
                                 export_name: symbol_name.to_string(),
                             };
-                            return Err(TypeCheckError::new(error.to_string(), span));
+                            Err(TypeCheckError::new(error.to_string(), span))
                         }
                     }
                     Err(ModuleError::NotCompiled { id }) => {
                         // Module exists but not compiled yet - attempt lazy type-checking
                         if let Some(callback) = lazy_callback {
                             // Check recursion depth to prevent infinite loops
-                            let current_depth = registry
-                                .get_type_check_depth(&id)
-                                .unwrap_or(0);
+                            let current_depth = registry.get_type_check_depth(&id).unwrap_or(0);
                             if current_depth > MAX_LAZY_DEPTH {
                                 let error = ModuleError::TypeCheckInProgress {
                                     module: id.clone(),
                                     depth: current_depth,
                                     max_depth: MAX_LAZY_DEPTH,
                                 };
-                                return Err(TypeCheckError::new(error.to_string(), span));
+                                Err(TypeCheckError::new(error.to_string(), span))?;
                             }
 
                             // Increment depth for this module
@@ -526,8 +532,7 @@ fn resolve_import_type<'arena>(
                             let _ = registry.decrement_type_check_depth(&id);
 
                             // If type-checking failed, propagate error
-                            check_result
-                                .map_err(|e| TypeCheckError::new(e.to_string(), span))?;
+                            check_result.map_err(|e| TypeCheckError::new(e.to_string(), span))?;
 
                             // Retry export lookup after type-checking
                             match registry.get_exports(&source_module_id) {
@@ -537,34 +542,32 @@ fn resolve_import_type<'arena>(
                                     {
                                         // Validation: ensure runtime imports don't use type-only exports
                                         validate_import_export_compatibility(
-                                            &exported_sym,
+                                            exported_sym,
                                             is_type_only_import,
                                             symbol_name,
                                             &source_module_id,
                                             span,
                                         )?;
-                                        return Ok(exported_sym.symbol.typ.clone());
+                                        Ok(exported_sym.symbol.typ.clone())
                                     } else {
                                         let error = ModuleError::ExportNotFound {
                                             module_id: source_module_id.clone(),
                                             export_name: symbol_name.to_string(),
                                         };
-                                        return Err(TypeCheckError::new(error.to_string(), span));
+                                        Err(TypeCheckError::new(error.to_string(), span))
                                     }
                                 }
-                                Err(e) => {
-                                    return Err(TypeCheckError::new(e.to_string(), span));
-                                }
+                                Err(e) => Err(TypeCheckError::new(e.to_string(), span)),
                             }
                         } else {
                             // No callback provided - fail with proper error
                             let error = ModuleError::NotCompiled { id };
-                            return Err(TypeCheckError::new(error.to_string(), span));
+                            Err(TypeCheckError::new(error.to_string(), span))
                         }
                     }
                     Err(e) => {
                         // Other errors
-                        return Err(TypeCheckError::new(e.to_string(), span));
+                        Err(TypeCheckError::new(e.to_string(), span))
                     }
                 }
             }
@@ -577,7 +580,7 @@ fn resolve_import_type<'arena>(
                     source: source.to_string(),
                     reason: e.to_string(),
                 };
-                return Err(TypeCheckError::new(error.to_string(), span));
+                Err(TypeCheckError::new(error.to_string(), span))
             }
         }
     } else {
@@ -592,7 +595,7 @@ fn resolve_import_type<'arena>(
             source: source.to_string(),
             searched_paths: Vec::new(),
         };
-        return Err(TypeCheckError::new(error.to_string(), span));
+        Err(TypeCheckError::new(error.to_string(), span))
     }
 }
 
@@ -626,10 +629,10 @@ fn validate_import_export_compatibility(
             module_id: module_id.clone(),
             export_name: symbol_name.to_string(),
         };
-        return Err(TypeCheckError::new(error.to_string(), span));
+        Err(TypeCheckError::new(error.to_string(), span))
+    } else {
+        Ok(())
     }
-
-    Ok(())
 }
 
 /// Apply type arguments to an imported generic type.
@@ -648,8 +651,9 @@ fn validate_import_export_compatibility(
 /// # Returns
 ///
 /// The instantiated type with type arguments applied, or base_type if no arguments provided
+#[allow(dead_code)] // Placeholder for future full generic support across modules
 fn apply_type_arguments<'arena>(
-    arena: &'arena bumpalo::Bump,
+    _arena: &'arena bumpalo::Bump,
     base_type: &Type<'arena>,
     type_arguments: Option<&[Type<'arena>]>,
     symbol_name: &str,
@@ -728,7 +732,7 @@ mod tests {
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
         let interner = luanext_parser::string_interner::StringInterner::new();
-        let mut module_dependencies: Vec<PathBuf> = Vec::new();
+        let mut module_dependencies: Vec<TypedDependency> = Vec::new();
 
         let name_id = interner.intern("MyModule");
         let import = luanext_parser::ast::statement::ImportDeclaration {
@@ -759,7 +763,7 @@ mod tests {
     fn test_resolve_import_type_no_resolver() {
         let span = Span::new(0, 10, 0, 10);
         let handler: Arc<dyn DiagnosticHandler> = Arc::new(CollectingDiagnosticHandler::new());
-        let mut module_dependencies: Vec<PathBuf> = Vec::new();
+        let mut module_dependencies: Vec<TypedDependency> = Vec::new();
 
         let result = resolve_import_type(
             "./unknown.lua",
@@ -786,7 +790,7 @@ mod tests {
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
         let interner = luanext_parser::string_interner::StringInterner::new();
-        let mut module_dependencies: Vec<PathBuf> = Vec::new();
+        let mut module_dependencies: Vec<TypedDependency> = Vec::new();
 
         let import = luanext_parser::ast::statement::ImportDeclaration {
             clause: luanext_parser::ast::statement::ImportClause::Named(
@@ -828,7 +832,7 @@ mod tests {
         let mut type_env = crate::core::type_environment::TypeEnvironment::new();
         let mut access_control = crate::visitors::AccessControl::new();
         let interner = luanext_parser::string_interner::StringInterner::new();
-        let mut module_dependencies: Vec<PathBuf> = Vec::new();
+        let mut module_dependencies: Vec<TypedDependency> = Vec::new();
 
         let import = luanext_parser::ast::statement::ImportDeclaration {
             clause: luanext_parser::ast::statement::ImportClause::Namespace(
@@ -881,7 +885,8 @@ mod tests {
     #[test]
     fn test_validate_type_only_export_runtime_import() {
         let span = Span::new(0, 10, 0, 10);
-        let module_id = crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+        let module_id =
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
 
         // Create a type-only export
         let type_only_symbol = crate::utils::symbol_table::Symbol::new(
@@ -901,13 +906,17 @@ mod tests {
             span,
         );
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Cannot import type-only"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot import type-only"));
     }
 
     #[test]
     fn test_validate_type_only_export_type_import() {
         let span = Span::new(0, 10, 0, 10);
-        let module_id = crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+        let module_id =
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
 
         // Create a type-only export
         let type_only_symbol = crate::utils::symbol_table::Symbol::new(
@@ -932,7 +941,8 @@ mod tests {
     #[test]
     fn test_validate_runtime_export_runtime_import() {
         let span = Span::new(0, 10, 0, 10);
-        let module_id = crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+        let module_id =
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
 
         // Create a runtime export (not type-only)
         let runtime_symbol = crate::utils::symbol_table::Symbol::new(
@@ -963,7 +973,10 @@ mod tests {
         // Apply no type arguments - should return base type unchanged
         let result = apply_type_arguments(&arena, &base_type, None, "MyType", span);
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap().kind, TypeKind::Primitive(PrimitiveType::Number)));
+        assert!(matches!(
+            result.unwrap().kind,
+            TypeKind::Primitive(PrimitiveType::Number)
+        ));
     }
 
     #[test]
@@ -975,7 +988,10 @@ mod tests {
         // Apply empty type arguments slice - should return base type unchanged
         let result = apply_type_arguments(&arena, &base_type, Some(&[]), "MyType", span);
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap().kind, TypeKind::Primitive(PrimitiveType::Number)));
+        assert!(matches!(
+            result.unwrap().kind,
+            TypeKind::Primitive(PrimitiveType::Number)
+        ));
     }
 
     #[test]
@@ -988,6 +1004,9 @@ mod tests {
         // Apply type arguments to generic - should fail (not yet supported)
         let result = apply_type_arguments(&arena, &base_type, Some(&[arg_type]), "List", span);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not yet supported"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet supported"));
     }
 }

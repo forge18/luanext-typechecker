@@ -65,15 +65,26 @@ impl fmt::Display for ModuleError {
                 Ok(())
             }
             ModuleError::CircularDependency { cycle } => {
-                writeln!(f, "Circular dependency detected:")?;
+                writeln!(f, "Circular runtime dependency detected:")?;
+                writeln!(f)?;
                 for (i, id) in cycle.iter().enumerate() {
                     if i == cycle.len() - 1 {
-                        writeln!(f, "  {} -> {} (cycle)", id, cycle[0])?;
+                        writeln!(f, "  {} -> {} (completes cycle)", id, cycle[0])?;
                     } else {
                         writeln!(f, "  {} ->", id)?;
                     }
                 }
-                Ok(())
+                writeln!(f)?;
+                writeln!(f, "Suggestion:")?;
+                writeln!(
+                    f,
+                    "  If these modules only reference each other's types (not runtime values),"
+                )?;
+                writeln!(f, "  use 'import type {{ ... }}' instead of 'import {{ ... }}' to break the cycle.")?;
+                writeln!(f)?;
+                writeln!(f, "Example:")?;
+                writeln!(f, "  // Before: import {{ Foo }} from './other'")?;
+                write!(f, "  // After:  import type {{ Foo }} from './other'")
             }
             ModuleError::InvalidPath { source, reason } => {
                 write!(f, "Invalid module path '{}': {}", source, reason)
@@ -105,10 +116,7 @@ impl fmt::Display for ModuleError {
                 )?;
                 writeln!(f, "  Module: {}", module)?;
                 writeln!(f, "  Current recursion depth: {}/{}", depth, max_depth)?;
-                write!(
-                    f,
-                    "  Likely cause: Circular imports with type dependencies"
-                )
+                write!(f, "  Likely cause: Circular imports with type dependencies")
             }
             ModuleError::ExportTypeMismatch {
                 module_id,

@@ -211,23 +211,74 @@ impl TypeCompatibility {
 
 ## Module Resolution
 
+### Cross-File Type Resolution (Phase 1 & 2)
+
+LuaNext implements sophisticated cross-file type resolution enabling TypeScript-style imports across modules:
+
+#### Phase 1: Foundation (Complete - 2026-02-09)
+
+The core infrastructure for lazy type-checking across module boundaries:
+
+1. **Lazy Type Resolution**: When importing a symbol, types are resolved on-demand via `LazyTypeCheckCallback`
+   - Prevents infinite loops with circuit breaker (`MAX_LAZY_DEPTH = 10`)
+   - Proper error handling instead of `Unknown` fallback
+   - Validation ensures runtime imports don't reference type-only exports
+
+2. **Type Validation**: `validate_import_export_compatibility()` enforces:
+   - Runtime imports cannot reference type-only exports (TypeAlias, Interface)
+   - Type-only imports can reference any export
+   - Clear error messages with module/export information
+
+3. **Generic Type Handling**: Foundation for full generic support across modules
+   - `apply_type_arguments()` placeholder for future instantiation
+   - Framework ready for TypeParameter propagation
+
+#### Phase 2: LSP Support (Complete - 2026-02-09)
+
+IDE features to distinguish and track type-only imports:
+
+1. **Completion Provider Enhancement**:
+   - Shows "(type-only import)" suffix for type-only imported symbols
+   - Via `get_type_only_imports()` AST scanner
+
+2. **Hover Provider Enhancement**:
+   - Displays "*Imported as type-only*" note in markdown
+   - Via `is_type_only_import()` AST checker
+
+3. **Symbol Index Tracking**:
+   - Added `is_type_only` field to `ExportInfo` and `ImportInfo` structs
+   - `ImportClause::TypeOnly` now fully indexed in `index_imports()`
+   - Enables future "find references" and "rename" features
+
 ### ModuleRegistry
 
-Tracks all modules in a compilation:
+Tracks all modules with enhanced type resolution:
 
 ```rust
 pub struct ModuleRegistry {
     modules: FxHashMap<ModuleId, ModuleInfo>,
+    exports: FxHashMap<ModuleId, ModuleExports>,
+    // Circuit breaker for lazy type-checking
+    type_check_depth: FxHashMap<ModuleId, usize>,
     next_id: AtomicUsize,
 }
 
-struct ModuleInfo {
-    id: ModuleId,
-    path: PathBuf,
-    exports: FxHashMap<String, Symbol>,
-    dependencies: Vec<ModuleId>,
+struct ModuleExports {
+    named: FxHashMap<String, ExportedSymbol>,
+    default: Option<ExportedSymbol>,
+}
+
+struct ExportedSymbol {
+    symbol: Symbol<'static>,
+    is_type_only: bool,  // Distinguishes type-only exports
 }
 ```
+
+**Key Methods**:
+
+- `get_exports()`: Retrieves module exports with proper error handling
+- `increment_type_check_depth()` / `decrement_type_check_depth()`: Circuit breaker
+- `is_ready_for_type_checking()`: Prevents circular type-checking
 
 ### DependencyGraph
 
@@ -238,6 +289,7 @@ impl DependencyGraph {
     pub fn build_order(&self) -> Result<Vec<ModuleId>, CycleError> {
         // Topological sort of modules
         // Ensures dependencies are compiled before dependents
+        // (Future: will separate type-only and value edges for Phase 3)
     }
 }
 ```
@@ -261,6 +313,26 @@ impl ModuleResolver {
     }
 }
 ```
+
+### Type-Only Import/Export
+
+**Import Clause Types**:
+
+```rust
+pub enum ImportClause<'arena> {
+    Named(&'arena [ImportSpecifier]),           // Regular imports
+    Default(Ident),                               // Default imports
+    Namespace(Ident),                             // Namespace imports
+    TypeOnly(&'arena [ImportSpecifier]),         // Type-only imports
+    Mixed { default: Ident, named: &'arena [...] }, // Mixed imports
+}
+```
+
+**Export Handling**:
+
+- TypeAlias and Interface exports marked as `is_type_only: true`
+- Codegen skips generating runtime code for type-only imports
+- Type checker validates import compatibility via `is_type_only_import` parameter
 
 ## Control Flow Analysis
 

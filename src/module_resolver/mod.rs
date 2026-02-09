@@ -5,7 +5,7 @@ pub mod registry;
 #[cfg(test)]
 mod error_tests;
 
-pub use dependency_graph::DependencyGraph;
+pub use dependency_graph::{DependencyGraph, EdgeKind};
 pub use error::{ModuleError, ModuleId, ModuleKind};
 pub use registry::{CompiledModule, ExportedSymbol, ModuleExports, ModuleRegistry, ModuleStatus};
 
@@ -13,6 +13,19 @@ use crate::cli::config::CompilerOptions;
 use crate::cli::fs::FileSystem;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+/// A dependency with its edge kind (for tracking during type-checking)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedDependency {
+    pub path: PathBuf,
+    pub kind: EdgeKind,
+}
+
+impl TypedDependency {
+    pub fn new(path: PathBuf, kind: EdgeKind) -> Self {
+        Self { path, kind }
+    }
+}
 
 /// Normalize a path by removing . and .. components
 fn normalize_path(path: &Path) -> PathBuf {

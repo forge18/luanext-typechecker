@@ -5,7 +5,6 @@
 //! and testability.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use luanext_parser::ast::statement::TypeParameter;
@@ -53,7 +52,7 @@ pub struct TypeCheckerState<'a, 'arena> {
     /// Module resolver for import path resolution
     pub module_resolver: Option<Arc<ModuleResolver>>,
     /// Track module dependencies for cache invalidation
-    pub module_dependencies: Vec<PathBuf>,
+    pub module_dependencies: Vec<crate::module_resolver::TypedDependency>,
     /// Stack tracking whether we're inside a catch block (for rethrow validation)
     pub in_catch_block: Vec<bool>,
     /// Current namespace path for this module
@@ -229,14 +228,14 @@ impl<'a, 'arena> TypeCheckerState<'a, 'arena> {
     }
 
     /// Add a module dependency
-    pub fn add_dependency(&mut self, path: PathBuf) {
-        if !self.module_dependencies.contains(&path) {
-            self.module_dependencies.push(path);
+    pub fn add_dependency(&mut self, dep: crate::module_resolver::TypedDependency) {
+        if !self.module_dependencies.iter().any(|d| d.path == dep.path) {
+            self.module_dependencies.push(dep);
         }
     }
 
     /// Get all module dependencies
-    pub fn get_dependencies(&self) -> &[PathBuf] {
+    pub fn get_dependencies(&self) -> &[crate::module_resolver::TypedDependency] {
         &self.module_dependencies
     }
 }
@@ -307,14 +306,22 @@ mod tests {
 
     #[test]
     fn test_dependencies() {
+        use std::path::PathBuf;
+
         let mut state = create_test_state();
         assert!(state.get_dependencies().is_empty());
 
-        state.add_dependency(PathBuf::from("/path/to/module.lua"));
+        state.add_dependency(crate::module_resolver::TypedDependency::new(
+            PathBuf::from("/path/to/module.lua"),
+            crate::module_resolver::EdgeKind::Value,
+        ));
         assert_eq!(state.get_dependencies().len(), 1);
 
         // Duplicate should not be added
-        state.add_dependency(PathBuf::from("/path/to/module.lua"));
+        state.add_dependency(crate::module_resolver::TypedDependency::new(
+            PathBuf::from("/path/to/module.lua"),
+            crate::module_resolver::EdgeKind::Value,
+        ));
         assert_eq!(state.get_dependencies().len(), 1);
     }
 }

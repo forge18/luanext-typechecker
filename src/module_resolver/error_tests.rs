@@ -57,11 +57,12 @@ fn test_module_error_circular_dependency() {
     };
 
     let display = format!("{}", error);
-    assert!(display.contains("Circular dependency detected:"));
+    assert!(display.contains("Circular runtime dependency detected:"));
     assert!(display.contains("a.tl"));
     assert!(display.contains("b.tl"));
     assert!(display.contains("c.tl"));
     assert!(display.contains("cycle"));
+    assert!(display.contains("import type"));
 }
 
 #[test]
