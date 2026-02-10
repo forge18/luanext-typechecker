@@ -21,12 +21,12 @@ use luanext_parser::ast::statement::{
     AccessModifier, ClassDeclaration, ClassMember, EnumDeclaration, InterfaceDeclaration,
     InterfaceMember, TypeAliasDeclaration,
 };
-use tracing::debug;
 use luanext_parser::ast::types::{
     ObjectType, ObjectTypeMember, PrimitiveType, Type, TypeKind, TypeReference,
 };
 use luanext_parser::prelude::EnumValue;
 use luanext_parser::string_interner::StringInterner;
+use tracing::debug;
 
 /// Check a type alias declaration.
 ///
@@ -221,7 +221,10 @@ pub fn check_interface_declaration<'arena>(
     // Handle forward declarations: register interface name for mutual references
     // but skip member processing since forward declarations have no members
     if iface.is_forward_declaration {
-        debug!("Processing forward declaration for interface: {}", iface_name);
+        debug!(
+            "Processing forward declaration for interface: {}",
+            iface_name
+        );
 
         // Register interface with access control for forward references
         access_control.register_class(&iface_name, None);
@@ -241,8 +244,14 @@ pub fn check_interface_declaration<'arena>(
             .map_err(|e| TypeCheckError::new(e, iface.span))?;
 
         // Register in symbol table
-        let symbol = Symbol::new(iface_name.clone(), SymbolKind::Interface, empty_object.clone(), iface.span);
-        symbol_table.declare(symbol)
+        let symbol = Symbol::new(
+            iface_name.clone(),
+            SymbolKind::Interface,
+            empty_object.clone(),
+            iface.span,
+        );
+        symbol_table
+            .declare(symbol)
             .map_err(|e| TypeCheckError::new(e, iface.span))?;
 
         return Ok((true, empty_object));

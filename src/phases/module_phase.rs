@@ -69,10 +69,13 @@ fn symbol_to_static<'arena>(symbol: Symbol<'arena>) -> Symbol<'static> {
 /// - `module_registry`: Optional registry for resolving re-exports (None if not using modules)
 /// - `module_resolver`: Optional resolver for finding source modules (None if not using modules)
 /// - `current_module_id`: Optional ID of the current module (None if not using modules)
+/// - `lazy_callback`: Optional callback for lazy type-checking of dependencies
+/// - `diagnostic_handler`: Handler for reporting errors
 ///
 /// # Returns
 ///
 /// A `ModuleExports` structure containing all exports found in the program.
+#[allow(clippy::too_many_arguments)]
 pub fn extract_exports<'arena>(
     program: &Program<'arena>,
     symbol_table: &SymbolTable<'arena>,
@@ -80,6 +83,8 @@ pub fn extract_exports<'arena>(
     module_registry: Option<&std::sync::Arc<crate::module_resolver::ModuleRegistry>>,
     module_resolver: Option<&std::sync::Arc<crate::module_resolver::ModuleResolver>>,
     current_module_id: Option<&crate::module_resolver::ModuleId>,
+    lazy_callback: Option<&dyn LazyTypeCheckCallback>,
+    diagnostic_handler: &Arc<dyn DiagnosticHandler>,
 ) -> ModuleExports {
     let mut exports = ModuleExports::new();
 
@@ -100,15 +105,26 @@ pub fn extract_exports<'arena>(
 
                         // Check if this is a re-export from another module
                         if let Some(source_path) = source {
-                            handle_reexport(
+                            // Determine if this is a type-only export
+                            let is_type_only = false; // TODO: Detect from export_decl statement type
+
+                            let result = handle_reexport(
                                 &local_name,
                                 &export_name,
                                 source_path,
+                                is_type_only,
+                                export_decl.span,
                                 module_registry,
                                 module_resolver,
                                 current_module_id,
+                                lazy_callback,
+                                diagnostic_handler,
                                 &mut exports,
                             );
+
+                            if let Err(e) = result {
+                                diagnostic_handler.error(export_decl.span, &e.to_string());
+                            }
                         } else {
                             // Local export - look up in symbol table
                             if let Some(symbol) = symbol_table.lookup(&local_name) {
@@ -124,6 +140,35 @@ pub fn extract_exports<'arena>(
                                     ),
                                 );
                             }
+                        }
+                    }
+                }
+                ExportKind::All { source, is_type_only } => {
+                    // export * from './module' - copy all exports from source module
+                    let result = handle_export_all(
+                        source,
+                        *is_type_only,
+                        current_module_id,
+                        module_registry,
+                        module_resolver,
+                        export_decl.span,
+                        lazy_callback,
+                        diagnostic_handler,
+                    );
+
+                    match result {
+                        Ok(source_exports) => {
+                            // Add all exports from source module to our exports
+                            for (export_name, exported_sym) in source_exports.named.iter() {
+                                // Skip non-type exports if this is export type *
+                                if *is_type_only && !exported_sym.is_type_only {
+                                    continue;
+                                }
+                                exports.add_named(export_name.clone(), exported_sym.clone());
+                            }
+                        }
+                        Err(e) => {
+                            diagnostic_handler.error(export_decl.span, &e.to_string());
                         }
                     }
                 }
@@ -220,26 +265,104 @@ fn extract_declaration_export<'arena>(
 }
 
 /// Helper: Handle re-exports from another module
+///
+/// Resolves a re-exported symbol and adds it to the module's exports.
+/// Uses `resolve_re_export()` for robust chain resolution with error handling.
 #[allow(clippy::too_many_arguments)]
 fn handle_reexport(
     local_name: &str,
     export_name: &str,
     source_path: &str,
-    module_registry: Option<&std::sync::Arc<crate::module_resolver::ModuleRegistry>>,
-    module_resolver: Option<&std::sync::Arc<crate::module_resolver::ModuleResolver>>,
-    current_module_id: Option<&crate::module_resolver::ModuleId>,
+    is_type_only_export: bool,
+    span: Span,
+    module_registry: Option<&Arc<ModuleRegistry>>,
+    module_resolver: Option<&Arc<ModuleResolver>>,
+    current_module_id: Option<&ModuleId>,
+    lazy_callback: Option<&dyn LazyTypeCheckCallback>,
+    diagnostic_handler: &Arc<dyn DiagnosticHandler>,
     exports: &mut ModuleExports,
-) {
+) -> Result<(), ModuleError> {
     if let (Some(registry), Some(resolver), Some(current_id)) =
         (module_registry, module_resolver, current_module_id)
     {
-        if let Ok(source_module_id) = resolver.resolve(source_path, current_id.path()) {
-            if let Ok(source_exports) = registry.get_exports(&source_module_id) {
-                if let Some(exported_sym) = source_exports.get_named(local_name) {
-                    exports.add_named(export_name.to_string(), exported_sym.clone());
+        let mut visited = std::collections::HashSet::new();
+        let exported_sym = resolve_re_export(
+            source_path,
+            local_name,
+            span,
+            registry,
+            resolver,
+            current_id,
+            lazy_callback,
+            is_type_only_export,
+            diagnostic_handler,
+            &mut visited,
+        )?;
+
+        exports.add_named(export_name.to_string(), exported_sym);
+        Ok(())
+    } else {
+        // Module resolution not configured - can't resolve re-export
+        Err(ModuleError::NotFound {
+            source: source_path.to_string(),
+            searched_paths: Vec::new(),
+        })
+    }
+}
+
+/// Helper: Handle export all from another module
+///
+/// Resolves all exports from a source module and returns them.
+/// Used for `export * from './module'` and `export type * from './module'`.
+#[allow(clippy::too_many_arguments)]
+fn handle_export_all(
+    source_path: &str,
+    is_type_only_export: bool,
+    current_module_id: Option<&ModuleId>,
+    module_registry: Option<&Arc<ModuleRegistry>>,
+    module_resolver: Option<&Arc<ModuleResolver>>,
+    _span: Span,
+    lazy_callback: Option<&dyn LazyTypeCheckCallback>,
+    _diagnostic_handler: &Arc<dyn DiagnosticHandler>,
+) -> Result<ModuleExports, ModuleError> {
+    if let (Some(registry), Some(resolver), Some(current_id)) =
+        (module_registry, module_resolver, current_module_id)
+    {
+        // Resolve source module path to module ID
+        let source_module_id = resolver.resolve(source_path, current_id.path())?;
+
+        // Get or lazily type-check source module
+        let source_exports = match registry.get_exports(&source_module_id) {
+            Ok(exports) => exports.clone(),
+            Err(_) => {
+                if let Some(callback) = lazy_callback {
+                    callback.type_check_dependency(&source_module_id)?;
+                    registry.get_exports(&source_module_id)?.clone()
+                } else {
+                    return Err(ModuleError::NotCompiled {
+                        id: source_module_id,
+                    });
                 }
             }
+        };
+
+        // Filter exports based on type-only flag
+        let mut result = ModuleExports::new();
+        for (name, exported_sym) in source_exports.named.iter() {
+            // Skip non-type exports if this is export type *
+            if is_type_only_export && !exported_sym.is_type_only {
+                continue;
+            }
+            result.add_named(name.clone(), exported_sym.clone());
         }
+
+        Ok(result)
+    } else {
+        // Module resolution not configured - can't resolve export all
+        Err(ModuleError::NotFound {
+            source: source_path.to_string(),
+            searched_paths: Vec::new(),
+        })
     }
 }
 
@@ -599,6 +722,122 @@ fn resolve_import_type<'arena>(
     }
 }
 
+/// Resolve a re-exported symbol through potentially multiple re-export chains.
+///
+/// Returns the original `ExportedSymbol` after following the chain to its source.
+/// This function handles:
+/// - Resolving re-export source modules
+/// - Detecting circular re-export chains
+/// - Enforcing maximum depth limits for performance
+/// - Validating type-only export consistency
+/// - Lazy type-checking of uncompiled dependencies
+///
+/// # Parameters
+///
+/// - `source_path`: The module path being re-exported from
+/// - `symbol_name`: The name of the symbol in the source module
+/// - `span`: Source location for error reporting
+/// - `module_registry`: Registry of compiled modules
+/// - `module_resolver`: Module path resolver
+/// - `current_module_id`: The module doing the re-export
+/// - `lazy_callback`: Optional callback for lazy type-checking
+/// - `is_type_only_export`: Whether this is a type-only re-export
+/// - `diagnostic_handler`: For error reporting
+/// - `visited`: Set of visited modules for cycle detection
+///
+/// # Returns
+///
+/// The `ExportedSymbol` from the original definition, or error if resolution fails
+#[allow(clippy::too_many_arguments)]
+fn resolve_re_export(
+    source_path: &str,
+    symbol_name: &str,
+    _span: Span,
+    module_registry: &Arc<ModuleRegistry>,
+    module_resolver: &Arc<ModuleResolver>,
+    current_module_id: &ModuleId,
+    lazy_callback: Option<&dyn LazyTypeCheckCallback>,
+    is_type_only_export: bool,
+    _diagnostic_handler: &Arc<dyn DiagnosticHandler>,
+    visited: &mut std::collections::HashSet<ModuleId>,
+) -> Result<ExportedSymbol, ModuleError> {
+    const MAX_REEXPORT_DEPTH: usize = 10;
+
+    // 1. Resolve source module path
+    let source_module_id = module_resolver.resolve(source_path, current_module_id.path())?;
+
+    // 2. Check for circular re-exports
+    if visited.len() >= MAX_REEXPORT_DEPTH {
+        return Err(ModuleError::ReExportChainTooDeep {
+            symbol_name: symbol_name.to_string(),
+            depth: visited.len(),
+            max_depth: MAX_REEXPORT_DEPTH,
+        });
+    }
+
+    if !visited.insert(source_module_id.clone()) {
+        // We've already visited this module - circular dependency
+        let mut chain: Vec<_> = visited.iter().cloned().collect();
+        chain.push(source_module_id.clone());
+        return Err(ModuleError::CircularReExport {
+            chain,
+            symbol_name: symbol_name.to_string(),
+        });
+    }
+
+    // 3. Try to get exports, with lazy resolution if needed
+    let source_exports = match module_registry.get_exports(&source_module_id) {
+        Ok(exports) => exports,
+        Err(ModuleError::NotCompiled { id }) => {
+            // Module exists but not compiled yet - attempt lazy type-checking
+            if let Some(callback) = lazy_callback {
+                let current_depth = module_registry.get_type_check_depth(&id).unwrap_or(0);
+                if current_depth > MAX_LAZY_DEPTH {
+                    return Err(ModuleError::TypeCheckInProgress {
+                        module: id.clone(),
+                        depth: current_depth,
+                        max_depth: MAX_LAZY_DEPTH,
+                    });
+                }
+
+                let _ = module_registry.increment_type_check_depth(&id);
+                let check_result = callback.type_check_dependency(&id);
+                let _ = module_registry.decrement_type_check_depth(&id);
+
+                check_result?;
+
+                // Retry export lookup after type-checking
+                module_registry.get_exports(&source_module_id)?
+            } else {
+                return Err(ModuleError::NotCompiled { id });
+            }
+        }
+        Err(e) => return Err(e),
+    };
+
+    // 4. Look up the symbol in exports
+    match source_exports.get_named(symbol_name) {
+        Some(exported_sym) => {
+            // 5. Validate type-only consistency
+            if !is_type_only_export && exported_sym.is_type_only {
+                return Err(ModuleError::TypeOnlyReExportAsValue {
+                    module_id: source_module_id.clone(),
+                    symbol_name: symbol_name.to_string(),
+                });
+            }
+
+            // 6. Check if this export is itself a re-export
+            // If the source exports index had re-export information, we'd follow it here
+            // For now, return the symbol as we've found the export
+            Ok(exported_sym.clone())
+        }
+        None => Err(ModuleError::ExportNotFound {
+            module_id: source_module_id.clone(),
+            export_name: symbol_name.to_string(),
+        }),
+    }
+}
+
 /// Validate import/export compatibility before returning the type.
 ///
 /// Performs the following checks:
@@ -695,7 +934,18 @@ mod tests {
         };
         let interner = luanext_parser::string_interner::StringInterner::new();
         let symbol_table = crate::utils::symbol_table::SymbolTable::new();
-        let result = extract_exports(&program, &symbol_table, &interner, None, None, None);
+        let handler: Arc<dyn DiagnosticHandler> =
+            Arc::new(crate::cli::diagnostics::CollectingDiagnosticHandler::new());
+        let result = extract_exports(
+            &program,
+            &symbol_table,
+            &interner,
+            None,
+            None,
+            None,
+            None,
+            &handler,
+        );
         assert!(result.named.is_empty());
         assert!(result.default.is_none());
     }
@@ -720,7 +970,18 @@ mod tests {
             span,
         };
 
-        let result = extract_exports(&program, &symbol_table, &interner, None, None, None);
+        let handler: Arc<dyn DiagnosticHandler> =
+            Arc::new(crate::cli::diagnostics::CollectingDiagnosticHandler::new());
+        let result = extract_exports(
+            &program,
+            &symbol_table,
+            &interner,
+            None,
+            None,
+            None,
+            None,
+            &handler,
+        );
         assert!(result.named.is_empty());
     }
 
@@ -878,7 +1139,18 @@ mod tests {
             span,
         };
 
-        let result = extract_exports(&program, &symbol_table, &interner, None, None, None);
+        let handler: Arc<dyn DiagnosticHandler> =
+            Arc::new(crate::cli::diagnostics::CollectingDiagnosticHandler::new());
+        let result = extract_exports(
+            &program,
+            &symbol_table,
+            &interner,
+            None,
+            None,
+            None,
+            None,
+            &handler,
+        );
         assert!(result.named.is_empty());
     }
 

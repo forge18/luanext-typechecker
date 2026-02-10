@@ -48,6 +48,25 @@ pub enum ModuleError {
         module_id: ModuleId,
         export_name: String,
     },
+
+    /// Circular re-export chain detected
+    CircularReExport {
+        chain: Vec<ModuleId>,
+        symbol_name: String,
+    },
+
+    /// Re-export chain too deep (performance protection)
+    ReExportChainTooDeep {
+        symbol_name: String,
+        depth: usize,
+        max_depth: usize,
+    },
+
+    /// Type-only export re-exported as value export
+    TypeOnlyReExportAsValue {
+        module_id: ModuleId,
+        symbol_name: String,
+    },
 }
 
 impl fmt::Display for ModuleError {
@@ -142,6 +161,53 @@ impl fmt::Display for ModuleError {
                     export_name, module_id
                 )?;
                 write!(f, "  Use 'import type {{ {} }}' instead", export_name)
+            }
+            ModuleError::CircularReExport { chain, symbol_name } => {
+                writeln!(
+                    f,
+                    "Circular re-export chain detected for symbol '{}':",
+                    symbol_name
+                )?;
+                writeln!(f)?;
+                for (i, id) in chain.iter().enumerate() {
+                    if i == chain.len() - 1 {
+                        writeln!(f, "  {} -> {} (completes cycle)", id, chain[0])?;
+                    } else {
+                        writeln!(f, "  {} ->", id)?;
+                    }
+                }
+                writeln!(f)?;
+                write!(
+                    f,
+                    "Break this cycle by removing the re-export from one of these modules"
+                )
+            }
+            ModuleError::ReExportChainTooDeep {
+                symbol_name,
+                depth,
+                max_depth,
+            } => {
+                writeln!(f, "Re-export chain too deep for symbol '{}'", symbol_name)?;
+                writeln!(f, "  Current depth: {}/{}", depth, max_depth)?;
+                write!(
+                    f,
+                    "  Simplify the re-export chain or inline the definitions"
+                )
+            }
+            ModuleError::TypeOnlyReExportAsValue {
+                module_id,
+                symbol_name,
+            } => {
+                writeln!(
+                    f,
+                    "Cannot re-export type-only symbol '{}' from '{}' as a runtime export",
+                    symbol_name, module_id
+                )?;
+                write!(
+                    f,
+                    "  Use 'export type {{ {} }}' if this is a type-only re-export",
+                    symbol_name
+                )
             }
         }
     }

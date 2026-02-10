@@ -1018,6 +1018,10 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                     ));
                 }
             }
+            ExportKind::All { .. } => {
+                // export * from './module' - we'll track re-exported names during extract_exports
+                // For now, no duplicate checking needed at this stage
+            }
         }
 
         // Now process the export declaration
@@ -1091,6 +1095,20 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             ExportKind::Default(expr) => {
                 // Type check the default export expression
                 self.infer_expression_type(expr)?;
+                Ok(())
+            }
+            ExportKind::All { source, .. } => {
+                // Validate that the source module exists and can be resolved
+                if let (Some(resolver), Some(current_id)) =
+                    (&self.module_resolver, &self.current_module_id)
+                {
+                    if let Err(e) = resolver.resolve(source, current_id.path()) {
+                        return Err(TypeCheckError::new(
+                            format!("Cannot resolve module '{}': {}", source, e),
+                            export.span,
+                        ));
+                    }
+                }
                 Ok(())
             }
         }
@@ -1268,10 +1286,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
 
             // Register class symbol for forward references with Primitive::Never type
             // The actual type will be filled in when the full class declaration is processed
-            let class_type = Type::new(
-                TypeKind::Primitive(PrimitiveType::Never),
-                class_decl.span,
-            );
+            let class_type = Type::new(TypeKind::Primitive(PrimitiveType::Never), class_decl.span);
 
             let symbol = Symbol::new(
                 class_name.clone(),
@@ -1279,7 +1294,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
                 class_type,
                 class_decl.span,
             );
-            self.symbol_table.declare(symbol)
+            self.symbol_table
+                .declare(symbol)
                 .map_err(|e| TypeCheckError::new(e, class_decl.span))?;
 
             return Ok(());
@@ -2777,6 +2793,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         program: &Program<'arena>,
     ) -> crate::module_resolver::ModuleExports {
         // Delegate to module_phase for export extraction
+        // Note: lazy_callback is None for now - will be passed from CLI integration in future
         phases::module_phase::extract_exports(
             program,
             &self.symbol_table,
@@ -2784,6 +2801,8 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             self.module_registry.as_ref(),
             self.module_resolver.as_ref(),
             self.current_module_id.as_ref(),
+            None, // lazy_callback - TODO: Implement in CLI integration
+            &self.diagnostic_handler,
         )
     }
 
