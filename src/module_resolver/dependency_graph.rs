@@ -61,16 +61,11 @@ impl DependencyGraph {
         let mut sorted = Vec::new();
         let mut visited = FxHashSet::default();
         let mut visiting = FxHashSet::default();
+        let mut path = Vec::new();
 
         for node in &self.nodes {
             if !visited.contains(node) {
-                self.visit(
-                    node,
-                    &mut visited,
-                    &mut visiting,
-                    &mut sorted,
-                    &mut Vec::new(),
-                )?;
+                self.visit(node, &mut visited, &mut visiting, &mut sorted, &mut path)?;
             }
         }
 
@@ -79,21 +74,31 @@ impl DependencyGraph {
 
     /// DFS visit for topological sort with cycle detection
     ///
-    /// Only follows Value edges. Type-only edges are ignored.
+    /// Follows ALL edges (Value and TypeOnly) for proper compilation ordering.
+    /// Only reports errors for cycles that include Value edges.
+    /// Pure type-only cycles are allowed (skipped silently).
     fn visit(
         &self,
         node: &ModuleId,
         visited: &mut FxHashSet<ModuleId>,
         visiting: &mut FxHashSet<ModuleId>,
         sorted: &mut Vec<ModuleId>,
-        path: &mut Vec<ModuleId>,
+        path: &mut Vec<(ModuleId, EdgeKind)>,
     ) -> Result<(), ModuleError> {
         if visiting.contains(node) {
-            // Circular dependency detected - extract cycle from path
-            let cycle_start = path.iter().position(|n| n == node).unwrap();
-            let mut cycle: Vec<ModuleId> = path[cycle_start..].to_vec();
-            cycle.push(node.clone());
-            return Err(ModuleError::CircularDependency { cycle });
+            // Cycle detected - check if it involves any Value edges
+            let cycle_start = path.iter().position(|(n, _)| n == node).unwrap();
+            let cycle_edges = &path[cycle_start..];
+            let has_value_edge = cycle_edges.iter().any(|(_, kind)| *kind == EdgeKind::Value);
+
+            if has_value_edge {
+                // Value cycle - this is an error
+                let mut cycle: Vec<ModuleId> = cycle_edges.iter().map(|(n, _)| n.clone()).collect();
+                cycle.push(node.clone());
+                return Err(ModuleError::CircularDependency { cycle });
+            }
+            // Pure type-only cycle - allowed, just skip
+            return Ok(());
         }
 
         if visited.contains(node) {
@@ -101,18 +106,16 @@ impl DependencyGraph {
         }
 
         visiting.insert(node.clone());
-        path.push(node.clone());
 
-        // Visit dependencies - ONLY follow Value edges
+        // Visit ALL dependencies (both Value and TypeOnly) for ordering
         if let Some(edges) = self.edges.get(node) {
             for edge in edges {
-                if edge.kind == EdgeKind::Value {
-                    self.visit(&edge.target, visited, visiting, sorted, path)?;
-                }
+                path.push((node.clone(), edge.kind));
+                self.visit(&edge.target, visited, visiting, sorted, path)?;
+                path.pop();
             }
         }
 
-        path.pop();
         visiting.remove(node);
         visited.insert(node.clone());
         sorted.push(node.clone());
@@ -313,12 +316,12 @@ mod tests {
     }
 
     #[test]
-    fn test_type_dependency_ignored_in_sort() {
+    fn test_type_dependency_respected_in_sort() {
         let mut graph = DependencyGraph::new();
 
         // a -> b (value), b -> c (type), a -> c (type)
-        // Topological order should be: c, b, a (or b, c, a)
-        // The type-only edge a -> c should be ignored
+        // Topological order should be: c, b, a
+        // Type-only edges ARE followed for ordering (but cycles are allowed)
         graph.add_module(make_id("c"), vec![]);
         graph.add_module(make_id("b"), vec![(make_id("c"), EdgeKind::TypeOnly)]);
         graph.add_module(
@@ -333,10 +336,13 @@ mod tests {
 
         let a_pos = sorted.iter().position(|id| id.as_str() == "a").unwrap();
         let b_pos = sorted.iter().position(|id| id.as_str() == "b").unwrap();
+        let c_pos = sorted.iter().position(|id| id.as_str() == "c").unwrap();
 
         // a should come after b (respects value edge)
         assert!(b_pos < a_pos);
-        // c position doesn't matter relative to a (type-only edge ignored)
+        // c should come before b and a (respects type-only edges for ordering)
+        assert!(c_pos < b_pos);
+        assert!(c_pos < a_pos);
     }
 
     #[test]

@@ -1074,6 +1074,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             ExportKind::Named {
                 specifiers: _,
                 source,
+                is_type_only: _,
             } => {
                 // For re-exports, we don't need to register anything in the local symbol table
                 // The symbols will be resolved from the source module during extract_exports

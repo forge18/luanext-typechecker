@@ -94,7 +94,11 @@ pub fn extract_exports<'arena>(
                 ExportKind::Declaration(decl) => {
                     extract_declaration_export(decl, symbol_table, interner, &mut exports);
                 }
-                ExportKind::Named { specifiers, source } => {
+                ExportKind::Named {
+                    specifiers,
+                    source,
+                    is_type_only: export_is_type_only,
+                } => {
                     for spec in specifiers.iter() {
                         let local_name = interner.resolve(spec.local.node);
                         let export_name = spec
@@ -105,14 +109,11 @@ pub fn extract_exports<'arena>(
 
                         // Check if this is a re-export from another module
                         if let Some(source_path) = source {
-                            // Determine if this is a type-only export
-                            let is_type_only = false; // TODO: Detect from export_decl statement type
-
                             let result = handle_reexport(
                                 &local_name,
                                 &export_name,
                                 source_path,
-                                is_type_only,
+                                *export_is_type_only,
                                 export_decl.span,
                                 module_registry,
                                 module_resolver,
@@ -128,10 +129,16 @@ pub fn extract_exports<'arena>(
                         } else {
                             // Local export - look up in symbol table
                             if let Some(symbol) = symbol_table.lookup(&local_name) {
-                                let is_type_only = matches!(
-                                    symbol.kind,
-                                    SymbolKind::TypeAlias | SymbolKind::Interface
-                                );
+                                // For local exports, the type-only flag from the export declaration
+                                // takes precedence over the symbol kind
+                                let is_type_only = if *export_is_type_only {
+                                    true
+                                } else {
+                                    matches!(
+                                        symbol.kind,
+                                        SymbolKind::TypeAlias | SymbolKind::Interface
+                                    )
+                                };
                                 exports.add_named(
                                     export_name,
                                     ExportedSymbol::new(
@@ -143,7 +150,10 @@ pub fn extract_exports<'arena>(
                         }
                     }
                 }
-                ExportKind::All { source, is_type_only } => {
+                ExportKind::All {
+                    source,
+                    is_type_only,
+                } => {
                     // export * from './module' - copy all exports from source module
                     let result = handle_export_all(
                         source,
@@ -682,6 +692,12 @@ fn resolve_import_type<'arena>(
                                 }
                                 Err(e) => Err(TypeCheckError::new(e.to_string(), span)),
                             }
+                        } else if is_type_only_import {
+                            // Type-only import of uncompiled module: this happens in circular
+                            // type-only dependency cycles. Since type-only imports have no runtime
+                            // effect, we return Unknown to allow compilation to proceed.
+                            // The imported type will be treated as opaque.
+                            Ok(Type::new(TypeKind::Primitive(PrimitiveType::Unknown), span))
                         } else {
                             // No callback provided - fail with proper error
                             let error = ModuleError::NotCompiled { id };
@@ -808,6 +824,24 @@ fn resolve_re_export(
 
                 // Retry export lookup after type-checking
                 module_registry.get_exports(&source_module_id)?
+            } else if is_type_only_export {
+                // Type-only re-export of uncompiled module: create a synthetic
+                // type-only export with Unknown type for circular type deps
+                let synthetic_symbol = Symbol {
+                    name: symbol_name.to_string(),
+                    typ: Type::new(
+                        TypeKind::Primitive(PrimitiveType::Unknown),
+                        Span::new(0, 0, 0, 0),
+                    ),
+                    kind: SymbolKind::TypeAlias,
+                    span: Span::new(0, 0, 0, 0),
+                    is_exported: true,
+                    references: Vec::new(),
+                };
+                return Ok(ExportedSymbol::new(
+                    symbol_to_static(synthetic_symbol),
+                    true,
+                ));
             } else {
                 return Err(ModuleError::NotCompiled { id });
             }
@@ -818,18 +852,17 @@ fn resolve_re_export(
     // 4. Look up the symbol in exports
     match source_exports.get_named(symbol_name) {
         Some(exported_sym) => {
-            // 5. Validate type-only consistency
-            if !is_type_only_export && exported_sym.is_type_only {
-                return Err(ModuleError::TypeOnlyReExportAsValue {
-                    module_id: source_module_id.clone(),
-                    symbol_name: symbol_name.to_string(),
-                });
+            // 5. Preserve type-only nature: if the source is type-only, the
+            // re-export is also type-only regardless of the export syntax.
+            // This allows `export { User } from './types'` to work when User
+            // is an interface (type-only). The re-exported symbol inherits
+            // the type-only flag from the original.
+            let mut result_sym = exported_sym.clone();
+            if is_type_only_export {
+                result_sym.is_type_only = true;
             }
 
-            // 6. Check if this export is itself a re-export
-            // If the source exports index had re-export information, we'd follow it here
-            // For now, return the symbol as we've found the export
-            Ok(exported_sym.clone())
+            Ok(result_sym)
         }
         None => Err(ModuleError::ExportNotFound {
             module_id: source_module_id.clone(),

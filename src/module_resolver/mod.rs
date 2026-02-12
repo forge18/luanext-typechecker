@@ -139,7 +139,7 @@ impl ModuleResolver {
         let mut searched_paths = Vec::new();
 
         // Try direct file with extensions
-        for ext in &["tl", "d.tl"] {
+        for ext in &["luax", "tl", "d.tl"] {
             let path = target.with_extension(ext);
             searched_paths.push(path.clone());
             if self.fs.exists(&path) {
@@ -166,11 +166,13 @@ impl ModuleResolver {
             }
         }
 
-        // Try as directory with index.tl
-        let index_path = target.join("index.tl");
-        searched_paths.push(index_path.clone());
-        if self.fs.exists(&index_path) {
-            return self.canonicalize(&index_path);
+        // Try as directory with index files
+        for index_name in &["index.luax", "index.tl"] {
+            let index_path = target.join(index_name);
+            searched_paths.push(index_path.clone());
+            if self.fs.exists(&index_path) {
+                return self.canonicalize(&index_path);
+            }
         }
 
         Err(ModuleError::NotFound {
@@ -194,11 +196,13 @@ impl ModuleResolver {
                 return Ok(resolved);
             }
 
-            // Try as directory with index.tl
-            let index_path = candidate.join("index.tl");
-            searched_paths.push(index_path.clone());
-            if self.fs.exists(&index_path) {
-                return self.canonicalize(&index_path);
+            // Try as directory with index files
+            for index_name in &["index.luax", "index.tl"] {
+                let index_path = candidate.join(index_name);
+                searched_paths.push(index_path.clone());
+                if self.fs.exists(&index_path) {
+                    return self.canonicalize(&index_path);
+                }
             }
         }
 
@@ -214,7 +218,14 @@ impl ModuleResolver {
         base: &Path,
         searched_paths: &mut Vec<PathBuf>,
     ) -> Result<ModuleId, ModuleError> {
-        // Try .tl first
+        // Try .luax first (modern format)
+        let luax_path = base.with_extension("luax");
+        searched_paths.push(luax_path.clone());
+        if self.fs.exists(&luax_path) {
+            return self.canonicalize(&luax_path);
+        }
+
+        // Try .tl (legacy format)
         let tl_path = base.with_extension("tl");
         searched_paths.push(tl_path.clone());
         if self.fs.exists(&tl_path) {

@@ -200,16 +200,18 @@ fn test_mixed_value_and_type_exports() {
 
 #[test]
 fn test_reexport_cannot_be_type_only_and_value() {
+    // In our type system, you can't export the same name as both a value and type-only
+    // The second export declaration will cause a "Duplicate export" error
+    // This is correct behavior - you must choose one mode for each exported name
     let source = r#"
         export { foo } from './module'
         export type { foo } from './module'
     "#;
     let result = parse_and_check(source);
-    // Both can be declared separately - they refer to same name but different contexts
-    // The type checker should allow this as they're in different type/value spaces
+    // This should fail with a duplicate export error
     assert!(
-        result.is_ok(),
-        "Value and type with same name in different spaces should be allowed"
+        result.is_err(),
+        "Cannot have duplicate export with different modes"
     );
 }
 
