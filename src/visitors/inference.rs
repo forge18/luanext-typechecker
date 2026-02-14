@@ -2531,7 +2531,7 @@ impl<'a, 'arena> TypeInferrer<'a, 'arena> {
                     span,
                 ));
             }
-            Some(type_args) if type_args.is_empty() => {
+            Some([]) => {
                 return Err(TypeCheckError::new(
                     "assertType requires exactly one type argument (e.g., assertType<string>(value))".to_string(),
                     span,
