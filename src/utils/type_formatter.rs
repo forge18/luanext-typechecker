@@ -1,8 +1,9 @@
-/// User-friendly type formatting for error messages
-///
-/// This module provides functions to format types in a human-readable way,
-/// suitable for error messages. Unlike Debug formatting, this produces clean,
-/// TypeScript-like type representations.
+//! User-friendly type formatting for error messages
+//!
+//! This module provides functions to format types in a human-readable way,
+//! suitable for error messages. Unlike Debug formatting, this produces clean,
+//! TypeScript-like type representations.
+
 use luanext_parser::ast::{
     expression::Literal,
     pattern::Pattern,

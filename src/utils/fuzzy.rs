@@ -1,7 +1,8 @@
-/// Fuzzy matching utilities for "did you mean?" suggestions
-///
-/// This module provides Levenshtein distance-based fuzzy matching to suggest
-/// similar names when encountering undefined variables, properties, or modules.
+//! Fuzzy matching utilities for "did you mean?" suggestions
+//!
+//! This module provides Levenshtein distance-based fuzzy matching to suggest
+//! similar names when encountering undefined variables, properties, or modules.
+
 use std::cmp::min;
 
 /// Calculate Levenshtein distance between two strings

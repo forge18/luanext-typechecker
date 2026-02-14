@@ -1,8 +1,9 @@
+//! Type conversion suggestions for error messages
+//!
+//! This module provides contextual suggestions for type mismatches, helping users
+//! fix type errors with actionable recommendations.
+
 use crate::cli::diagnostics::DiagnosticSuggestion;
-/// Type conversion suggestions for error messages
-///
-/// This module provides contextual suggestions for type mismatches, helping users
-/// fix type errors with actionable recommendations.
 use luanext_parser::ast::types::{PrimitiveType, Type, TypeKind};
 use luanext_parser::span::Span;
 
