@@ -42,6 +42,7 @@ use luanext_parser::span::Span;
 pub struct TypeCheckError {
     pub message: String,
     pub span: Span,
+    pub suggestion: Option<String>,
 }
 
 impl TypeCheckError {
@@ -49,7 +50,13 @@ impl TypeCheckError {
         Self {
             message: message.into(),
             span,
+            suggestion: None,
         }
+    }
+
+    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
+        self.suggestion = Some(suggestion.into());
+        self
     }
 }
 
@@ -59,7 +66,11 @@ impl std::fmt::Display for TypeCheckError {
             f,
             "{} at {}:{}",
             self.message, self.span.line, self.span.column
-        )
+        )?;
+        if let Some(suggestion) = &self.suggestion {
+            write!(f, ". Did you mean '{}'?", suggestion)?;
+        }
+        Ok(())
     }
 }
 
@@ -73,5 +84,12 @@ mod tests {
     fn test_type_check_error_display() {
         let error = TypeCheckError::new("test error", Span::new(0, 10, 1, 2));
         assert_eq!(format!("{}", error), "test error at 1:2");
+    }
+
+    #[test]
+    fn test_type_check_error_with_suggestion() {
+        let error = TypeCheckError::new("Undefined variable 'userNme'", Span::new(0, 10, 1, 2))
+            .with_suggestion("userName");
+        assert_eq!(format!("{}", error), "Undefined variable 'userNme' at 1:2. Did you mean 'userName'?");
     }
 }

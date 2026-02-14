@@ -192,10 +192,25 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                     Ok(symbol.typ.clone())
                 } else {
                     error!(name = %name_str, "Undefined variable");
-                    Err(TypeCheckError::new(
+
+                    // Collect all visible symbols as candidates for fuzzy matching
+                    let candidates: Vec<String> = self.symbol_table
+                        .all_visible_symbols()
+                        .keys()
+                        .cloned()
+                        .collect();
+
+                    let mut error = TypeCheckError::new(
                         format!("Undefined variable '{}'", name_str),
                         span,
-                    ))
+                    );
+
+                    // Add "did you mean?" suggestion if a similar name is found
+                    if let Some(suggestion) = crate::utils::fuzzy::suggest_similar(&name_str, &candidates) {
+                        error = error.with_suggestion(suggestion);
+                    }
+
+                    Err(error)
                 }
             }
 
@@ -273,10 +288,24 @@ impl<'a, 'arena> TypeInferenceVisitor<'arena> for TypeInferrer<'a, 'arena> {
                         if let Some(symbol) = self.symbol_table.lookup(&name_str) {
                             symbol.typ.clone()
                         } else {
-                            return Err(TypeCheckError::new(
+                            // Collect candidates for fuzzy matching
+                            let candidates: Vec<String> = self.symbol_table
+                                .all_visible_symbols()
+                                .keys()
+                                .cloned()
+                                .collect();
+
+                            let mut error = TypeCheckError::new(
                                 format!("Undefined variable '{}'", name_str),
                                 span,
-                            ));
+                            );
+
+                            // Add "did you mean?" suggestion
+                            if let Some(suggestion) = crate::utils::fuzzy::suggest_similar(&name_str, &candidates) {
+                                error = error.with_suggestion(suggestion);
+                            }
+
+                            return Err(error);
                         }
                     }
                     _ => Type::new(TypeKind::Primitive(PrimitiveType::Unknown), span),
