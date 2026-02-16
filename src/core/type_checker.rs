@@ -473,6 +473,7 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         // Declare the variable in the symbol table
         let symbol_kind = match decl.kind {
             VariableKind::Const => SymbolKind::Const,
+            VariableKind::Global => SymbolKind::Variable,
             VariableKind::Local => SymbolKind::Variable,
         };
 
