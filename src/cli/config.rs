@@ -12,6 +12,10 @@ pub enum LuaVersion {
     Lua53,
     #[serde(rename = "5.4")]
     Lua54,
+    #[serde(rename = "5.5")]
+    Lua55,
+    #[serde(rename = "jit")]
+    LuaJIT,
     #[serde(rename = "auto")]
     #[default]
     Auto,
@@ -27,15 +31,23 @@ impl LuaVersion {
             if output.status.success() {
                 let version_output = String::from_utf8_lossy(&output.stdout);
 
+                // LuaJIT outputs "LuaJIT 2.x.x ..." — check before version numbers
+                if version_output.contains("LuaJIT") {
+                    return LuaVersion::LuaJIT;
+                }
+
                 // Parse version from output like "Lua 5.4.6  Copyright (C) 1994-2023 Lua.org, PUC-Rio"
-                if version_output.contains("5.1") {
-                    return LuaVersion::Lua51;
-                } else if version_output.contains("5.2") {
-                    return LuaVersion::Lua52;
-                } else if version_output.contains("5.3") {
-                    return LuaVersion::Lua53;
+                // Check newer versions first to avoid false matches (e.g. "5.5" contains "5.")
+                if version_output.contains("5.5") {
+                    return LuaVersion::Lua55;
                 } else if version_output.contains("5.4") {
                     return LuaVersion::Lua54;
+                } else if version_output.contains("5.3") {
+                    return LuaVersion::Lua53;
+                } else if version_output.contains("5.2") {
+                    return LuaVersion::Lua52;
+                } else if version_output.contains("5.1") {
+                    return LuaVersion::Lua51;
                 }
             }
         }
@@ -538,5 +550,62 @@ compilerOptions:
             config.compiler_options.paths.get("*"),
             Some(&vec!["./vendor/*".to_string(), "./types/*".to_string()])
         );
+    }
+
+    #[test]
+    fn test_deserialize_lua55_target() {
+        let yaml = r#"
+compilerOptions:
+  target: "5.5"
+"#;
+        let config: CompilerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.compiler_options.target, LuaVersion::Lua55);
+    }
+
+    #[test]
+    fn test_deserialize_luajit_target() {
+        let yaml = r#"
+compilerOptions:
+  target: "jit"
+"#;
+        let config: CompilerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.compiler_options.target, LuaVersion::LuaJIT);
+    }
+
+    #[test]
+    fn test_config_merge_lua55_override() {
+        let mut config = CompilerConfig::default();
+        assert_eq!(config.compiler_options.target, LuaVersion::Lua54);
+
+        let overrides = CliOverrides {
+            target: Some(LuaVersion::Lua55),
+            ..Default::default()
+        };
+
+        config.merge(&overrides);
+        assert_eq!(config.compiler_options.target, LuaVersion::Lua55);
+    }
+
+    #[test]
+    fn test_config_merge_luajit_override() {
+        let mut config = CompilerConfig::default();
+
+        let overrides = CliOverrides {
+            target: Some(LuaVersion::LuaJIT),
+            ..Default::default()
+        };
+
+        config.merge(&overrides);
+        assert_eq!(config.compiler_options.target, LuaVersion::LuaJIT);
+    }
+
+    #[test]
+    fn test_lua55_effective() {
+        assert_eq!(LuaVersion::Lua55.effective(), LuaVersion::Lua55);
+    }
+
+    #[test]
+    fn test_luajit_effective() {
+        assert_eq!(LuaVersion::LuaJIT.effective(), LuaVersion::LuaJIT);
     }
 }

@@ -33,7 +33,7 @@ use std::sync::Arc;
 ///
 /// # Arguments
 ///
-/// * `target_version` - The Lua version to parse stdlib for (5.1, 5.2, 5.3, or 5.4)
+/// * `target_version` - The Lua version to parse stdlib for (5.1, 5.2, 5.3, 5.4, 5.5, or jit)
 /// * `interner` - String interner for parsing identifiers
 /// * `common` - Common identifiers for parsing
 ///
@@ -126,6 +126,8 @@ mod tests {
             LuaVersion::Lua52,
             LuaVersion::Lua53,
             LuaVersion::Lua54,
+            LuaVersion::Lua55,
+            LuaVersion::LuaJIT,
         ];
 
         for version in versions {
