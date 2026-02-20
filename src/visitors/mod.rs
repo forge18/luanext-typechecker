@@ -10,6 +10,5 @@ pub use inference::{InferenceContext, TypeInferenceVisitor, TypeInferrer};
 pub use narrowing::{narrow_type_from_condition, NarrowingContext, NarrowingVisitor, TypeNarrower};
 
 pub trait TypeCheckVisitor {
-    #[allow(dead_code)]
     fn name(&self) -> &'static str;
 }

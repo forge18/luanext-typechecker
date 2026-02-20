@@ -923,16 +923,6 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         Ok(())
     }
 
-    /// Validate interface members for correctness
-    #[allow(dead_code)]
-    fn validate_interface_members(
-        &self,
-        members: &[ObjectTypeMember<'arena>],
-        span: Span,
-    ) -> Result<(), TypeCheckError> {
-        phases::validation_phase::validate_interface_members(members, span)
-    }
-
     /// Check type alias
     fn check_type_alias(
         &mut self,
@@ -1657,16 +1647,6 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
             &self.type_env,
             self.interner,
         )
-    }
-
-    /// Validate that all class properties are compatible with interface index signature
-    #[allow(dead_code)]
-    fn validate_index_signature(
-        &self,
-        class_decl: &ClassDeclaration<'arena>,
-        index_sig: &IndexSignature<'arena>,
-    ) -> Result<(), TypeCheckError> {
-        phases::validation_phase::validate_index_signature(class_decl, index_sig, self.interner)
     }
 
     /// Check that a class implements all abstract methods from its parent class
@@ -3103,21 +3083,9 @@ impl<'a, 'arena> TypeChecker<'a, 'arena> {
         result
     }
 
-    /// Check if a class has circular inheritance by walking up the parent chain
-    #[allow(dead_code)]
-    fn has_circular_inheritance(&self, class_name: &str) -> bool {
-        phases::validation_phase::has_circular_inheritance(class_name, &self.class_parents)
-    }
-
     /// Check if a block always returns (has a return statement on all code paths)
     fn block_always_returns(&self, block: &Block<'arena>) -> bool {
         control_flow::block_always_returns(block, self.interner)
-    }
-
-    /// Check if a statement always returns
-    #[allow(dead_code)]
-    fn statement_always_returns(&self, stmt: &Statement<'arena>) -> bool {
-        control_flow::statement_always_returns(stmt, self.interner)
     }
 }
 

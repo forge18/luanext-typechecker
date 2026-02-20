@@ -73,16 +73,3 @@ impl<'arena> TypeCheckContext<'arena> for TypeCheckContextImpl<'arena> {
         &self.diagnostic_handler
     }
 }
-
-#[cfg(test)]
-pub mod test_helpers {
-
-    // Note: Use proper DI container for creating test contexts
-    // This method is commented out due to missing TestDiagnosticHandler
-    // pub fn create_test_context() -> TypeCheckContextImpl {
-    //     let interner = Arc::new(StringInterner::new());
-    //     let common = Arc::new(CommonIdentifiers::new(&interner));
-    //     let diagnostic_handler: Arc<dyn DiagnosticHandler> = Arc::new(TestDiagnosticHandler::new());
-    //     TypeCheckContextImpl::new(interner, common, diagnostic_handler)
-    // }
-}

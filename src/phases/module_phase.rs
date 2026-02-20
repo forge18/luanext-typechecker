@@ -915,44 +915,6 @@ fn validate_import_export_compatibility(
 /// # Parameters
 ///
 /// - `arena`: Arena allocator for creating new types
-/// - `base_type`: The type of the imported symbol
-/// - `type_arguments`: Optional type arguments from the import statement
-/// - `symbol_name`: Name of the symbol for error reporting
-/// - `span`: Source span for error reporting
-///
-/// # Returns
-///
-/// The instantiated type with type arguments applied, or base_type if no arguments provided
-#[allow(dead_code)] // Placeholder for future full generic support across modules
-fn apply_type_arguments<'arena>(
-    _arena: &'arena bumpalo::Bump,
-    base_type: &Type<'arena>,
-    type_arguments: Option<&[Type<'arena>]>,
-    symbol_name: &str,
-    span: Span,
-) -> Result<Type<'arena>, TypeCheckError> {
-    match type_arguments {
-        None => Ok(base_type.clone()),
-        Some(args) => {
-            // For now, we don't have the type parameters from the exported symbol,
-            // so we can only validate that the type supports generics.
-            // Full generic instantiation would require tracking TypeParameter info
-            // in the exported symbols, which is a future enhancement.
-
-            if args.is_empty() {
-                Ok(base_type.clone())
-            } else {
-                // Generic types are not yet fully supported across module boundaries
-                // This is a placeholder for future implementation
-                Err(TypeCheckError::new(
-                    format!("Generic type arguments on cross-module imports are not yet supported for '{}'", symbol_name),
-                    span,
-                ))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1270,51 +1232,5 @@ mod tests {
             span,
         );
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_apply_type_arguments_no_args() {
-        let arena = bumpalo::Bump::new();
-        let span = Span::new(0, 10, 0, 10);
-        let base_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
-
-        // Apply no type arguments - should return base type unchanged
-        let result = apply_type_arguments(&arena, &base_type, None, "MyType", span);
-        assert!(result.is_ok());
-        assert!(matches!(
-            result.unwrap().kind,
-            TypeKind::Primitive(PrimitiveType::Number)
-        ));
-    }
-
-    #[test]
-    fn test_apply_type_arguments_empty_args() {
-        let arena = bumpalo::Bump::new();
-        let span = Span::new(0, 10, 0, 10);
-        let base_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
-
-        // Apply empty type arguments slice - should return base type unchanged
-        let result = apply_type_arguments(&arena, &base_type, Some(&[]), "MyType", span);
-        assert!(result.is_ok());
-        assert!(matches!(
-            result.unwrap().kind,
-            TypeKind::Primitive(PrimitiveType::Number)
-        ));
-    }
-
-    #[test]
-    fn test_apply_type_arguments_with_args_not_supported() {
-        let arena = bumpalo::Bump::new();
-        let span = Span::new(0, 10, 0, 10);
-        let base_type = Type::new(TypeKind::Primitive(PrimitiveType::Number), span);
-        let arg_type = Type::new(TypeKind::Primitive(PrimitiveType::String), span);
-
-        // Apply type arguments to generic - should fail (not yet supported)
-        let result = apply_type_arguments(&arena, &base_type, Some(&[arg_type]), "List", span);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("not yet supported"));
     }
 }

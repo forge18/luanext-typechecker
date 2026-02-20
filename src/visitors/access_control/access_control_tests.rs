@@ -38,7 +38,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     fn create_test_getter<'a>(
         name: &str,
         access: AccessModifier,
@@ -53,7 +52,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     fn create_test_setter<'a>(
         name: &str,
         access: AccessModifier,
@@ -70,7 +68,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     fn create_test_operator(
         name: &str,
         access: AccessModifier,
