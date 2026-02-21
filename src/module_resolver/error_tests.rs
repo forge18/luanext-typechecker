@@ -3,31 +3,31 @@ use std::path::PathBuf;
 
 #[test]
 fn test_module_id_creation() {
-    let path = PathBuf::from("/test/module.tl");
+    let path = PathBuf::from("/test/module.luax");
     let module_id = ModuleId::new(path.clone());
     assert_eq!(module_id.path(), &path);
 }
 
 #[test]
 fn test_module_id_as_str() {
-    let path = PathBuf::from("/test/module.tl");
+    let path = PathBuf::from("/test/module.luax");
     let module_id = ModuleId::new(path);
-    assert_eq!(module_id.as_str(), "/test/module.tl");
+    assert_eq!(module_id.as_str(), "/test/module.luax");
 }
 
 #[test]
 fn test_module_id_display() {
-    let path = PathBuf::from("/test/module.tl");
+    let path = PathBuf::from("/test/module.luax");
     let module_id = ModuleId::new(path);
     let display = format!("{}", module_id);
-    assert_eq!(display, "/test/module.tl");
+    assert_eq!(display, "/test/module.luax");
 }
 
 #[test]
 fn test_module_id_from_pathbuf() {
-    let path = PathBuf::from("/test/module.tl");
+    let path = PathBuf::from("/test/module.luax");
     let module_id: ModuleId = path.into();
-    assert_eq!(module_id.as_str(), "/test/module.tl");
+    assert_eq!(module_id.as_str(), "/test/module.luax");
 }
 
 #[test]
@@ -47,9 +47,9 @@ fn test_module_error_not_found() {
 #[test]
 fn test_module_error_circular_dependency() {
     let cycle = vec![
-        ModuleId::new(PathBuf::from("a.tl")),
-        ModuleId::new(PathBuf::from("b.tl")),
-        ModuleId::new(PathBuf::from("c.tl")),
+        ModuleId::new(PathBuf::from("a.luax")),
+        ModuleId::new(PathBuf::from("b.luax")),
+        ModuleId::new(PathBuf::from("c.luax")),
     ];
 
     let error = ModuleError::CircularDependency {
@@ -58,9 +58,9 @@ fn test_module_error_circular_dependency() {
 
     let display = format!("{}", error);
     assert!(display.contains("Circular runtime dependency detected:"));
-    assert!(display.contains("a.tl"));
-    assert!(display.contains("b.tl"));
-    assert!(display.contains("c.tl"));
+    assert!(display.contains("a.luax"));
+    assert!(display.contains("b.luax"));
+    assert!(display.contains("c.luax"));
     assert!(display.contains("cycle"));
     assert!(display.contains("import type"));
 }
@@ -80,33 +80,33 @@ fn test_module_error_invalid_path() {
 #[test]
 fn test_module_error_io_error() {
     let error = ModuleError::IoError {
-        path: PathBuf::from("/test/file.tl"),
+        path: PathBuf::from("/test/file.luax"),
         message: "Permission denied".to_string(),
     };
 
     let display = format!("{}", error);
-    assert!(display.contains("I/O error reading '/test/file.tl': Permission denied"));
+    assert!(display.contains("I/O error reading '/test/file.luax': Permission denied"));
 }
 
 #[test]
 fn test_module_error_not_compiled() {
-    let module_id = ModuleId::new(PathBuf::from("test.tl"));
+    let module_id = ModuleId::new(PathBuf::from("test.luax"));
     let error = ModuleError::NotCompiled { id: module_id };
 
     let display = format!("{}", error);
-    assert!(display.contains("Module 'test.tl' has not been compiled yet"));
+    assert!(display.contains("Module 'test.luax' has not been compiled yet"));
 }
 
 #[test]
 fn test_module_error_export_not_found() {
-    let module_id = ModuleId::new(PathBuf::from("test.tl"));
+    let module_id = ModuleId::new(PathBuf::from("test.luax"));
     let error = ModuleError::ExportNotFound {
         module_id,
         export_name: "unknown_function".to_string(),
     };
 
     let display = format!("{}", error);
-    assert!(display.contains("Module 'test.tl' does not export 'unknown_function'"));
+    assert!(display.contains("Module 'test.luax' does not export 'unknown_function'"));
 }
 
 #[test]
@@ -124,21 +124,21 @@ fn test_module_error_is_error_trait() {
 
 #[test]
 fn test_module_kind_typed_extension() {
-    assert_eq!(ModuleKind::from_extension("tl"), Some(ModuleKind::Typed));
+    assert_eq!(ModuleKind::from_extension("luax"), Some(ModuleKind::Typed));
 }
 
 #[test]
 fn test_module_kind_from_extension() {
-    assert_eq!(ModuleKind::from_extension("tl"), Some(ModuleKind::Typed));
+    assert_eq!(ModuleKind::from_extension("luax"), Some(ModuleKind::Typed));
     assert_eq!(
         ModuleKind::from_extension("lua"),
         Some(ModuleKind::PlainLua)
     );
     assert_eq!(
-        ModuleKind::from_extension(".d.tl"),
+        ModuleKind::from_extension(".d.luax"),
         Some(ModuleKind::Declaration)
     );
-    assert_eq!(ModuleKind::from_extension("d.tl"), None);
+    assert_eq!(ModuleKind::from_extension("d.luax"), None);
     assert_eq!(ModuleKind::from_extension("txt"), None);
     assert_eq!(ModuleKind::from_extension("rs"), None);
     assert_eq!(ModuleKind::from_extension(""), None);
@@ -146,7 +146,7 @@ fn test_module_kind_from_extension() {
 
 #[test]
 fn test_module_kind_declaration_extension() {
-    assert_eq!(ModuleKind::from_extension("tl"), Some(ModuleKind::Typed));
+    assert_eq!(ModuleKind::from_extension("luax"), Some(ModuleKind::Typed));
     assert_eq!(
         ModuleKind::from_extension("lua"),
         Some(ModuleKind::PlainLua)
@@ -164,8 +164,8 @@ fn test_module_kind_unknown_extension() {
 
 #[test]
 fn test_module_kind_extension_method() {
-    assert_eq!(ModuleKind::Typed.extension(), "tl");
-    assert_eq!(ModuleKind::Declaration.extension(), "d.tl");
+    assert_eq!(ModuleKind::Typed.extension(), "luax");
+    assert_eq!(ModuleKind::Declaration.extension(), "d.luax");
     assert_eq!(ModuleKind::PlainLua.extension(), "lua");
 }
 
@@ -190,7 +190,7 @@ fn test_module_error_clone() {
 
 #[test]
 fn test_module_id_clone() {
-    let id1 = ModuleId::new(PathBuf::from("/test.tl"));
+    let id1 = ModuleId::new(PathBuf::from("/test.luax"));
     let id2 = id1.clone();
 
     assert_eq!(id1.as_str(), id2.as_str());
@@ -200,9 +200,9 @@ fn test_module_id_clone() {
 fn test_module_id_hash() {
     use std::collections::HashSet;
 
-    let id1 = ModuleId::new(PathBuf::from("/test.tl"));
-    let id2 = ModuleId::new(PathBuf::from("/test.tl"));
-    let id3 = ModuleId::new(PathBuf::from("/other.tl"));
+    let id1 = ModuleId::new(PathBuf::from("/test.luax"));
+    let id2 = ModuleId::new(PathBuf::from("/test.luax"));
+    let id3 = ModuleId::new(PathBuf::from("/other.luax"));
 
     let mut set = HashSet::new();
     set.insert(id1.clone());

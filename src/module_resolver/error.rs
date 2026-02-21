@@ -275,9 +275,9 @@ impl From<PathBuf> for ModuleId {
 /// Type of module based on file extension
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleKind {
-    /// .tl file (TypedLua source)
+    /// .luax file (LuaNext source)
     Typed,
-    /// .d.tl file (Type declaration only)
+    /// .d.luax file (Type declaration only)
     Declaration,
     /// .lua file (Plain Lua, policy-dependent)
     PlainLua,
@@ -286,11 +286,11 @@ pub enum ModuleKind {
 impl ModuleKind {
     pub fn from_extension(ext: &str) -> Option<Self> {
         match ext {
-            "tl" => Some(Self::Typed),
+            "luax" => Some(Self::Typed),
             "lua" => Some(Self::PlainLua),
             _ => {
-                // Check for .d.tl
-                if ext.ends_with(".d.tl") {
+                // Check for .d.luax
+                if ext.ends_with(".d.luax") {
                     Some(Self::Declaration)
                 } else {
                     None
@@ -301,8 +301,8 @@ impl ModuleKind {
 
     pub fn extension(&self) -> &'static str {
         match self {
-            Self::Typed => "tl",
-            Self::Declaration => "d.tl",
+            Self::Typed => "luax",
+            Self::Declaration => "d.luax",
             Self::PlainLua => "lua",
         }
     }

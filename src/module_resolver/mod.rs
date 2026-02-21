@@ -90,7 +90,7 @@ impl ModuleConfig {
 /// Policy for handling plain .lua file imports
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LuaFilePolicy {
-    /// Require .d.tl declaration file
+    /// Require .d.luax declaration file
     RequireDeclaration,
     /// Block .lua imports entirely
     Block,
@@ -161,12 +161,10 @@ impl ModuleResolver {
             }
 
             // Try as directory with index files
-            for index_name in &["index.luax", "index.tl"] {
-                let index_path = candidate.join(index_name);
-                searched_paths.push(index_path.clone());
-                if self.fs.exists(&index_path) {
-                    return self.canonicalize(&index_path);
-                }
+            let index_path = candidate.join("index.luax");
+            searched_paths.push(index_path.clone());
+            if self.fs.exists(&index_path) {
+                return self.canonicalize(&index_path);
             }
         }
 
@@ -188,7 +186,7 @@ impl ModuleResolver {
         let mut searched_paths = Vec::new();
 
         // Try direct file with extensions
-        for ext in &["luax", "tl", "d.tl"] {
+        for ext in &["luax", "d.luax"] {
             let path = target.with_extension(ext);
             searched_paths.push(path.clone());
             if self.fs.exists(&path) {
@@ -201,13 +199,13 @@ impl ModuleResolver {
             self.config.lua_file_policy,
             LuaFilePolicy::RequireDeclaration
         ) {
-            // Check for .d.tl declaration file first
-            let decl_path = target.with_extension("d.tl");
+            // Check for .d.luax declaration file first
+            let decl_path = target.with_extension("d.luax");
             if self.fs.exists(&decl_path) {
                 return self.canonicalize(&decl_path);
             }
 
-            // Try .lua file (will require .d.tl at type-check time)
+            // Try .lua file (will require .d.luax at type-check time)
             let lua_path = target.with_extension("lua");
             searched_paths.push(lua_path.clone());
             if self.fs.exists(&lua_path) {
@@ -216,12 +214,10 @@ impl ModuleResolver {
         }
 
         // Try as directory with index files
-        for index_name in &["index.luax", "index.tl"] {
-            let index_path = target.join(index_name);
-            searched_paths.push(index_path.clone());
-            if self.fs.exists(&index_path) {
-                return self.canonicalize(&index_path);
-            }
+        let index_path = target.join("index.luax");
+        searched_paths.push(index_path.clone());
+        if self.fs.exists(&index_path) {
+            return self.canonicalize(&index_path);
         }
 
         Err(ModuleError::NotFound {
@@ -246,12 +242,10 @@ impl ModuleResolver {
             }
 
             // Try as directory with index files
-            for index_name in &["index.luax", "index.tl"] {
-                let index_path = candidate.join(index_name);
-                searched_paths.push(index_path.clone());
-                if self.fs.exists(&index_path) {
-                    return self.canonicalize(&index_path);
-                }
+            let index_path = candidate.join("index.luax");
+            searched_paths.push(index_path.clone());
+            if self.fs.exists(&index_path) {
+                return self.canonicalize(&index_path);
             }
         }
 
@@ -267,25 +261,18 @@ impl ModuleResolver {
         base: &Path,
         searched_paths: &mut Vec<PathBuf>,
     ) -> Result<ModuleId, ModuleError> {
-        // Try .luax first (modern format)
+        // Try .luax first
         let luax_path = base.with_extension("luax");
         searched_paths.push(luax_path.clone());
         if self.fs.exists(&luax_path) {
             return self.canonicalize(&luax_path);
         }
 
-        // Try .tl (legacy format)
-        let tl_path = base.with_extension("tl");
-        searched_paths.push(tl_path.clone());
-        if self.fs.exists(&tl_path) {
-            return self.canonicalize(&tl_path);
-        }
-
-        // Try .d.tl
-        let dtl_path = PathBuf::from(format!("{}.d.tl", base.display()));
-        searched_paths.push(dtl_path.clone());
-        if self.fs.exists(&dtl_path) {
-            return self.canonicalize(&dtl_path);
+        // Try .d.luax
+        let dluax_path = PathBuf::from(format!("{}.d.luax", base.display()));
+        searched_paths.push(dluax_path.clone());
+        if self.fs.exists(&dluax_path) {
+            return self.canonicalize(&dluax_path);
         }
 
         // Try .lua if policy allows
@@ -334,7 +321,7 @@ impl ModuleResolver {
     /// Get the module kind from a path
     pub fn get_module_kind(&self, path: &Path) -> Option<ModuleKind> {
         let path_str = path.to_str()?;
-        if path_str.ends_with(".d.tl") {
+        if path_str.ends_with(".d.luax") {
             Some(ModuleKind::Declaration)
         } else {
             path.extension()
@@ -351,11 +338,11 @@ mod tests {
 
     fn make_test_fs() -> Arc<MockFileSystem> {
         let mut fs = MockFileSystem::new();
-        fs.add_file("/project/src/main.tl", "-- main");
-        fs.add_file("/project/src/utils.tl", "-- utils");
-        fs.add_file("/project/src/types.d.tl", "-- types");
-        fs.add_file("/project/src/lib/index.tl", "-- lib");
-        fs.add_file("/project/lua_modules/foo/bar.tl", "-- foo.bar");
+        fs.add_file("/project/src/main.luax", "-- main");
+        fs.add_file("/project/src/utils.luax", "-- utils");
+        fs.add_file("/project/src/types.d.luax", "-- types");
+        fs.add_file("/project/src/lib/index.luax", "-- lib");
+        fs.add_file("/project/lua_modules/foo/bar.luax", "-- foo.bar");
         Arc::new(fs)
     }
 
@@ -376,10 +363,10 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let result = resolver.resolve("./utils", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./utils", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
-        assert!(id.as_str().contains("utils.tl"));
+        assert!(id.as_str().contains("utils.luax"));
     }
 
     #[test]
@@ -387,10 +374,10 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let result = resolver.resolve("./types", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./types", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
-        assert!(id.as_str().contains("types.d.tl"));
+        assert!(id.as_str().contains("types.d.luax"));
     }
 
     #[test]
@@ -398,11 +385,11 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let result = resolver.resolve("./lib", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./lib", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
         assert!(id.as_str().contains("lib"));
-        assert!(id.as_str().contains("index.tl"));
+        assert!(id.as_str().contains("index.luax"));
     }
 
     #[test]
@@ -410,11 +397,11 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let result = resolver.resolve("foo.bar", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("foo.bar", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
         assert!(id.as_str().contains("foo"));
-        assert!(id.as_str().contains("bar.tl"));
+        assert!(id.as_str().contains("bar.luax"));
     }
 
     #[test]
@@ -422,7 +409,7 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let result = resolver.resolve("./nonexistent", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./nonexistent", Path::new("/project/src/main.luax"));
         assert!(result.is_err());
 
         if let Err(ModuleError::NotFound {
@@ -442,10 +429,10 @@ mod tests {
         let fs = make_test_fs();
         let resolver = make_resolver(fs);
 
-        let tl_kind = resolver.get_module_kind(Path::new("test.tl"));
+        let tl_kind = resolver.get_module_kind(Path::new("test.luax"));
         assert_eq!(tl_kind, Some(ModuleKind::Typed));
 
-        let dtl_kind = resolver.get_module_kind(Path::new("test.d.tl"));
+        let dtl_kind = resolver.get_module_kind(Path::new("test.d.luax"));
         assert_eq!(dtl_kind, Some(ModuleKind::Declaration));
 
         let lua_kind = resolver.get_module_kind(Path::new("test.lua"));
@@ -455,7 +442,7 @@ mod tests {
     #[test]
     fn test_lua_file_policy_block() {
         let mut fs = MockFileSystem::new();
-        fs.add_file("/project/src/main.tl", "-- main");
+        fs.add_file("/project/src/main.luax", "-- main");
         fs.add_file("/project/src/legacy.lua", "-- legacy");
         let fs = Arc::new(fs);
 
@@ -467,7 +454,7 @@ mod tests {
         let resolver = ModuleResolver::new(fs, config, PathBuf::from("/project"));
 
         // Should not find .lua file when policy is Block
-        let result = resolver.resolve("./legacy", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./legacy", Path::new("/project/src/main.luax"));
         assert!(result.is_err());
     }
 
@@ -491,47 +478,47 @@ mod tests {
     #[test]
     fn test_resolve_alias_basic() {
         let mut fs = MockFileSystem::new();
-        fs.add_file("/project/src/utils.tl", "-- utils");
+        fs.add_file("/project/src/utils.luax", "-- utils");
         let fs: Arc<dyn FileSystem> = Arc::new(fs);
 
         let resolver = make_alias_resolver(fs, &[("@/*", &["src/*"])]);
-        let result = resolver.resolve("@/utils", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("@/utils", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
-        assert!(id.as_str().contains("utils.tl"));
+        assert!(id.as_str().contains("utils.luax"));
     }
 
     #[test]
     fn test_resolve_alias_nested() {
         let mut fs = MockFileSystem::new();
-        fs.add_file("/project/src/components/Button.tl", "-- button");
+        fs.add_file("/project/src/components/Button.luax", "-- button");
         let fs: Arc<dyn FileSystem> = Arc::new(fs);
 
         let resolver = make_alias_resolver(fs, &[("@/*", &["src/*"])]);
-        let result = resolver.resolve("@/components/Button", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("@/components/Button", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
-        assert!(id.as_str().contains("Button.tl"));
+        assert!(id.as_str().contains("Button.luax"));
     }
 
     #[test]
     fn test_resolve_alias_directory_index() {
         let mut fs = MockFileSystem::new();
-        fs.add_file("/project/src/lib/index.tl", "-- lib index");
+        fs.add_file("/project/src/lib/index.luax", "-- lib index");
         let fs: Arc<dyn FileSystem> = Arc::new(fs);
 
         let resolver = make_alias_resolver(fs, &[("@/*", &["src/*"])]);
-        let result = resolver.resolve("@/lib", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("@/lib", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
         let id = result.unwrap();
-        assert!(id.as_str().contains("index.tl"));
+        assert!(id.as_str().contains("index.luax"));
     }
 
     #[test]
     fn test_resolve_alias_not_found() {
         let fs = make_test_fs();
         let resolver = make_alias_resolver(fs, &[("@/*", &["src/*"])]);
-        let result = resolver.resolve("@/nonexistent", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("@/nonexistent", Path::new("/project/src/main.luax"));
         assert!(result.is_err());
 
         if let Err(ModuleError::AliasNotResolved {
@@ -553,7 +540,7 @@ mod tests {
         let resolver = make_alias_resolver(fs, &[("@/*", &["src/*"])]);
 
         // Relative paths should still work as before
-        let result = resolver.resolve("./utils", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("./utils", Path::new("/project/src/main.luax"));
         assert!(result.is_ok());
     }
 
@@ -563,7 +550,7 @@ mod tests {
         let resolver = make_alias_resolver(fs, &[("@std/*", &["custom_std/*"])]);
 
         // @std/ should NOT be treated as an alias (it's a built-in)
-        let result = resolver.resolve("@std/reflection", Path::new("/project/src/main.tl"));
+        let result = resolver.resolve("@std/reflection", Path::new("/project/src/main.luax"));
         // Should fail with NotFound (package resolution), not AliasNotResolved
         assert!(result.is_err());
         if let Err(ModuleError::AliasNotResolved { .. }) = result {

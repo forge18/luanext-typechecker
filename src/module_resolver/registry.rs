@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_registry_register_and_get() {
         let registry = ModuleRegistry::new();
-        let id = ModuleId::new(PathBuf::from("test.tl"));
+        let id = ModuleId::new(PathBuf::from("test.luax"));
         let symbol_table = Arc::new(SymbolTable::new());
 
         registry.register_parsed(id.clone(), symbol_table);
@@ -325,7 +325,7 @@ mod tests {
     #[test]
     fn test_registry_exports_workflow() {
         let registry = ModuleRegistry::new();
-        let id = ModuleId::new(PathBuf::from("test.tl"));
+        let id = ModuleId::new(PathBuf::from("test.luax"));
         let symbol_table = Arc::new(SymbolTable::new());
 
         // Register as parsed
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn test_type_check_depth_tracking() {
         let registry = ModuleRegistry::new();
-        let id = ModuleId::new(PathBuf::from("test.tl"));
+        let id = ModuleId::new(PathBuf::from("test.luax"));
 
         // Initial depth should be 0
         assert_eq!(registry.get_type_check_depth(&id).unwrap(), 0);
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn test_is_ready_for_type_checking() {
         let registry = ModuleRegistry::new();
-        let id = ModuleId::new(PathBuf::from("test.tl"));
+        let id = ModuleId::new(PathBuf::from("test.luax"));
         let symbol_table = Arc::new(SymbolTable::new());
 
         // Register as parsed

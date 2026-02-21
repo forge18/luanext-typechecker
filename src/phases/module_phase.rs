@@ -1156,7 +1156,7 @@ mod tests {
     fn test_validate_type_only_export_runtime_import() {
         let span = Span::new(0, 10, 0, 10);
         let module_id =
-            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.luax"));
 
         // Create a type-only export
         let type_only_symbol = crate::utils::symbol_table::Symbol::new(
@@ -1186,7 +1186,7 @@ mod tests {
     fn test_validate_type_only_export_type_import() {
         let span = Span::new(0, 10, 0, 10);
         let module_id =
-            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.luax"));
 
         // Create a type-only export
         let type_only_symbol = crate::utils::symbol_table::Symbol::new(
@@ -1212,7 +1212,7 @@ mod tests {
     fn test_validate_runtime_export_runtime_import() {
         let span = Span::new(0, 10, 0, 10);
         let module_id =
-            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.tl"));
+            crate::module_resolver::ModuleId::new(std::path::PathBuf::from("module.luax"));
 
         // Create a runtime export (not type-only)
         let runtime_symbol = crate::utils::symbol_table::Symbol::new(

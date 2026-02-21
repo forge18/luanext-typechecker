@@ -39,7 +39,7 @@ fn test_signature_hash_stability() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes1 =
         compute_hashes(source, module_path.clone()).expect("First hash computation failed");
     let hashes2 =
@@ -72,7 +72,7 @@ fn test_signature_change_detected() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -101,7 +101,7 @@ fn test_body_change_preserves_signature_hash() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -132,7 +132,7 @@ fn test_new_declaration_adds_hash() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -162,7 +162,7 @@ fn test_deletion_removes_hash() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -180,7 +180,7 @@ fn test_class_declaration_hash() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes = compute_hashes(source, module_path.clone()).expect("Hash computation failed");
 
     assert!(
@@ -197,7 +197,7 @@ fn test_interface_declaration_hash() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes = compute_hashes(source, module_path.clone()).expect("Hash computation failed");
 
     assert!(
@@ -212,7 +212,7 @@ fn test_type_alias_declaration_hash() {
         type MyAlias = number
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes = compute_hashes(source, module_path.clone()).expect("Hash computation failed");
 
     assert!(
@@ -227,7 +227,7 @@ fn test_enum_declaration_hash() {
         enum Status { Ok = 200, Error = 500 }
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes = compute_hashes(source, module_path.clone()).expect("Hash computation failed");
 
     assert!(
@@ -240,7 +240,7 @@ fn test_enum_declaration_hash() {
 fn test_invalidation_signature_change() {
     let mut old_cache = CompilationCache::default();
     let old_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "func".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "func".to_string()),
         100,
     )]
     .iter()
@@ -249,7 +249,7 @@ fn test_invalidation_signature_change() {
     old_cache.declaration_hashes = old_hashes;
 
     let new_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "func".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "func".to_string()),
         200,
     )]
     .iter()
@@ -272,7 +272,7 @@ fn test_invalidation_signature_change() {
 fn test_invalidation_body_only_change() {
     let mut old_cache = CompilationCache::default();
     let old_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "func".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "func".to_string()),
         100,
     )]
     .iter()
@@ -281,7 +281,7 @@ fn test_invalidation_body_only_change() {
     old_cache.declaration_hashes = old_hashes;
 
     let new_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "func".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "func".to_string()),
         100,
     )]
     .iter()
@@ -304,7 +304,7 @@ fn test_invalidation_body_only_change() {
 fn test_invalidation_new_function() {
     let mut old_cache = CompilationCache::default();
     let old_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "existing".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "existing".to_string()),
         100,
     )]
     .iter()
@@ -314,11 +314,11 @@ fn test_invalidation_new_function() {
 
     let new_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [
         (
-            DeclarationId::new(PathBuf::from("/a.tl"), "existing".to_string()),
+            DeclarationId::new(PathBuf::from("/a.luax"), "existing".to_string()),
             100,
         ),
         (
-            DeclarationId::new(PathBuf::from("/a.tl"), "newFunc".to_string()),
+            DeclarationId::new(PathBuf::from("/a.luax"), "newFunc".to_string()),
             200,
         ),
     ]
@@ -339,11 +339,11 @@ fn test_invalidation_deleted_function() {
     let mut old_cache = CompilationCache::default();
     let old_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [
         (
-            DeclarationId::new(PathBuf::from("/a.tl"), "keep".to_string()),
+            DeclarationId::new(PathBuf::from("/a.luax"), "keep".to_string()),
             100,
         ),
         (
-            DeclarationId::new(PathBuf::from("/a.tl"), "delete".to_string()),
+            DeclarationId::new(PathBuf::from("/a.luax"), "delete".to_string()),
             200,
         ),
     ]
@@ -353,7 +353,7 @@ fn test_invalidation_deleted_function() {
     old_cache.declaration_hashes = old_hashes;
 
     let new_hashes: rustc_hash::FxHashMap<DeclarationId, u64> = [(
-        DeclarationId::new(PathBuf::from("/a.tl"), "keep".to_string()),
+        DeclarationId::new(PathBuf::from("/a.luax"), "keep".to_string()),
         100,
     )]
     .iter()
@@ -361,7 +361,7 @@ fn test_invalidation_deleted_function() {
     .collect();
 
     let deleted = vec![DeclarationId::new(
-        PathBuf::from("/a.tl"),
+        PathBuf::from("/a.luax"),
         "delete".to_string(),
     )];
     let result = compute_invalidated_decls(&old_cache, &new_hashes, &deleted);
@@ -433,7 +433,7 @@ fn test_return_type_change_detected() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -458,7 +458,7 @@ fn test_parameter_type_change_detected() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -493,7 +493,7 @@ fn test_function_order_independence() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -522,7 +522,7 @@ fn test_multiple_functions_hash_computation() {
         function baz(): number return 3 end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes = compute_hashes(source, module_path.clone()).expect("Hash computation failed");
 
     assert_eq!(hashes.len(), 3);
@@ -562,7 +562,7 @@ fn test_generic_type_parameters_in_signature() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
@@ -589,7 +589,7 @@ fn test_constraint_change_detected() {
         end
     "#;
 
-    let module_path = PathBuf::from("/test/module.tl");
+    let module_path = PathBuf::from("/test/module.luax");
     let hashes_v1 = compute_hashes(source_v1, module_path.clone()).expect("v1 hash failed");
     let hashes_v2 = compute_hashes(source_v2, module_path.clone()).expect("v2 hash failed");
 
